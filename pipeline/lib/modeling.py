@@ -126,9 +126,9 @@ def _edit(obj, fn):
         bpy.ops.object.mode_set(mode="OBJECT")
 
 
-def make_high(asset, bevel=0.01, segments=3, angle=35):
+def make_high(asset, bevel=0.02, segments=3, angle=35):
     """`<slug>_high`: the low mesh with rounded hard edges, the source for normal and AO bakes.
-    bevel is a fraction of the asset's largest dimension."""
+    bevel is the rounding width in metres, so edges match across assets of any size."""
     low = asset.mesh
     old = asset.high
     if old:
@@ -138,7 +138,7 @@ def make_high(asset, bevel=0.01, segments=3, angle=35):
     high.name = high.data.name = f"{asset.slug}_high"
     bpy.context.scene.collection.objects.link(high)
     mod = high.modifiers.new("bevel", "BEVEL")
-    mod.width = bevel * asset.size()
+    mod.width = bevel
     mod.segments = segments
     mod.limit_method = "ANGLE"
     mod.angle_limit = math.radians(angle)

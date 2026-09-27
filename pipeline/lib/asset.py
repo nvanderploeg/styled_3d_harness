@@ -4,15 +4,19 @@ import os
 
 import bpy
 
+import art
+
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ASSETS = os.environ.get("ASSETS_DIR") or os.path.join(REPO, "assets")
 KIT = os.path.join(ASSETS, "_kit")
+ART = os.path.join(ASSETS, "_art")
 
 STAGES = ("model", "rig", "texture_base", "texture_ref")
 
 SPEC_DEFAULTS = {
     "brief": "",
     "refs": [],
+    "art": None,
     "rig": "none",
     "texture_mode": None,
     "tri_budget": 3000,
@@ -30,6 +34,8 @@ LIMIT_DEFAULTS = {
     "max_bones": 80,
     "texel_density_px_per_m": None,
     "min_zone_contrast": 20,
+    "albedo_luma": None,
+    "max_saturation": None,
 }
 
 
@@ -42,8 +48,12 @@ class Asset:
             raise SystemExit(f"no asset at {self.dir} — run: pipeline/asset new {slug}")
         with open(spec_path) as f:
             raw = json.load(f)
+        self.art_files = art.chain(ART, raw.get("art"))
+        self.art = art.merge(self.art_files, LIMIT_DEFAULTS)
         self.spec = {**SPEC_DEFAULTS, **raw}
-        self.limits = {**LIMIT_DEFAULTS, **raw.get("limits", {})}
+        if self.spec["texture_mode"] is None:
+            self.spec["texture_mode"] = self.art.get("texture_mode")
+        self.limits = {**LIMIT_DEFAULTS, **self.art.get("limits", {}), **raw.get("limits", {})}
 
     def path(self, *parts):
         return os.path.join(self.dir, *parts)
@@ -61,10 +71,34 @@ class Asset:
         return os.path.join(self.textures(stage), f"{self.slug}_{name}.png")
 
     def fingerprint(self):
-        """Hash of the spec fields a build reads; brief, refs and shots are notes, not inputs."""
+        """Hash of what a build or check reads: spec fields, limits in force and art rules.
+        brief, refs and shots are notes, not inputs."""
         inputs = {k: v for k, v in self.spec.items() if k not in ("brief", "refs", "shots", "slug")}
         inputs["limits"] = self.limits
+        if self.art:
+            inputs["art"] = self.art
         return hashlib.sha1(json.dumps(inputs, sort_keys=True).encode()).hexdigest()[:12]
+
+    def swatch(self, name):
+        """The art guides' palette swatch `name` with its defaults filled in, or None."""
+        s = self.art.get("palette", {}).get(name)
+        return {**art.SWATCH, **s} if s else None
+
+    def zone_table(self, local):
+        """(sRGB colour, roughness, metallic) for every mesh zone: the guides' swatch where the palette
+        has one, else local[zone]."""
+        table = {}
+        for mat in self.mesh.data.materials:
+            zone = mat.name[5:]
+            s = self.swatch(zone)
+            if s and zone in local:
+                raise SystemExit(f"zone '{zone}' has a swatch in the art guides; change it there, "
+                                 "not in the build script")
+            if not s and zone not in local:
+                raise SystemExit(f"zone '{zone}' needs a colour: add it to the build script's table "
+                                 "or to a guide's palette")
+            table[zone] = (s["color"], s["roughness"], s["metallic"]) if s else local[zone]
+        return table
 
     @property
     def rigged(self):
@@ -149,7 +183,7 @@ def status(a):
             state = "pass" if rep["pass"] else f"FAIL ({len(rep['fail'])})"
             changed = ["_kit"] if kit > max(mtime, rep.get("verified", 0.0)) else []
             if rep.get("spec") != a.fingerprint():
-                changed.append("asset.json")
+                changed.append("spec")
             if changed:
                 state += f" — {' and '.join(changed)} changed since; run: pipeline/asset verify {a.slug} {s}"
         rows.append((s, state))

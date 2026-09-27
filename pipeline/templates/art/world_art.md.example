@@ -1,0 +1,110 @@
+# World: Warcraft-style fantasy
+
+An example world guide in the style of World of Warcraft. Copy it to `assets/_art/world_art.md` and make it
+your game's; the format is `pipeline/ART.md`.
+
+## Style
+
+**Chunky, hand-painted, readable at a glance.** Heavy shapes that look like they could hurt you, painted like
+a storybook, and never quite straight.
+
+## Pillars
+
+Ranked: when two rules pull apart, the higher pillar wins.
+
+1. **Readable.** Silhouette and value say what a thing is from across the zone, before any texture detail. What
+   the player acts on (a door, a ledge, a lever) is the clearest read in view.
+2. **Chunky.** Parts are thicker, heavier and fewer than real ones: posts, rims, hinges and trims run
+   `shape.thickness` times their real size, and objects sit wide and low, planted on the ground.
+3. **Hand-built.** Nothing looks machine-made. Every long edge bows or tapers, every row of repeats varies,
+   and every corner is rounded.
+4. **Painted.** Light, shadow and material are painted into the albedo in broad strokes, so a texture reads as
+   a painting of the object rather than a photo of it.
+
+## Shape
+
+- **Big, medium, small.** One big shape reads first, a few medium shapes explain it, and small details sit only
+  where the eye lands. Detail that leaves the silhouette unchanged is painted, not modelled.
+- **Push the defining feature.** The part that says what a thing is gets exaggerated: a chest's bands, a
+  lamppost's lantern, a door's hinges.
+- **Taper and flare.** Uprights widen toward the base, and roofs and caps flare at their eaves, so things look
+  heavy and stable.
+- **Bowed and leaning.** Long edges bow by `shape.bow` of their length, and uprights lean by up to
+  `shape.lean_deg`. Repeated parts (planks, slates, spokes) vary in angle and spacing.
+- **Rounded edges.** `make_high` rounds every hard edge at one width for the whole game, so an edge reads the
+  same on a crate and on a castle. Blades and deliberate spikes stay sharp.
+
+```json
+{"shape": {"thickness": [1.5, 2.0], "bow": [0.01, 0.03], "lean_deg": [0, 2]},
+ "make_high": {"bevel": 0.02, "segments": 2}}
+```
+
+## Painting
+
+- **Painted light.** A key light from the upper front left, a top-down gradient, AO in every contact and
+  crease, a light rim on convex edges and a dark line in concave ones. Zones set the tints and keep the
+  direction.
+- **Cool shadows.** Shadows are always cooler than lights: blue-violet against a warm or neutral light. Zones
+  may push both tints and keep that order.
+- **Value first.** Each material reads in three values (shadow, mid, light) plus an edge highlight. Touching
+  materials separate by value at a squint, not by hue alone.
+- **Saturation for accents.** Most surfaces are rich but muted. The most saturated colours are kept for
+  accents: fire, magic, heraldry.
+- **Consolidated detail.** Paint fewer, bigger details: two big nails rather than four small ones, and three
+  knots on a board rather than a field of grain.
+- **Brush strokes.** A low-contrast stroke texture a few centimetres across covers every surface. Every
+  pattern is a shape a brush could paint, and noise only ever drives where the strokes fall.
+
+```json
+{"texture_mode": "stylized",
+ "painted_light": {"key": [-0.45, -0.55, 0.7], "wrap": 0.35, "top_strength": 0.15,
+                   "edge_radius": 0.012, "edge_strength": 0.35},
+ "brush": {"strength": 0.06, "scale": 30},
+ "limits": {"albedo_luma": [16, 240], "max_saturation": 0.8, "min_zone_contrast": 24}}
+```
+
+## Materials
+
+How each material reads in every zone. The zone and set guides give its colours.
+
+- **Wood.** Long strokes along the grain, a dark gap between boards, lighter chipped edges, and at most three
+  big knots per board. End grain shows its rings.
+- **Stone.** Chunky blocks, each with a lit top edge and a shadowed base, chipped corners, and mortar recessed
+  dark between them.
+- **Metal.** A dark base with sharp, bright highlights painted along its edges. Rivets and nail heads are big
+  dots, each with its own highlight. Metallic stays 0, because the shine is painted.
+- **Plaster.** Soft, mottled mid tones, stains running down from whatever sits above it, and cracks with a lit
+  lip.
+- **Cloth and leather.** Big folds with a painted shadow inside each, and a trim band at every hem.
+
+Every swatch stays rough, so the painted highlights are the only shine.
+
+## Scale and budgets
+
+Architecture is built for heroes. Doors, storeys and steps are oversized against a character, so armoured
+characters fit through them and the camera has room.
+
+Pick the budget class that fits the asset. Then pick its `texture_size` so its texel density lands inside
+`limits.texel_density_px_per_m`, or inside the class's own band where it has one.
+
+```json
+{"scale": {"character": 1.9, "door_height": 2.6, "door_width": 1.5, "storey": 3.4,
+           "step": 0.25, "table": 1.0, "seat": 0.55, "railing": 1.2},
+ "limits": {"texel_density_px_per_m": [160, 320]},
+ "budgets": {"small_prop": {"tri_budget": 800, "texture_size": 512},
+             "large_prop": {"tri_budget": 2000, "texture_size": 1024},
+             "building_piece": {"tri_budget": 3000, "texture_size": 1024},
+             "landmark": {"tri_budget": 8000, "texture_size": 2048},
+             "character": {"tri_budget": 12000, "texture_size": 2048,
+                           "limits": {"texel_density_px_per_m": [480, 960]}}}}
+```
+
+## References
+
+Keep the images in `refs/` beside this guide; the example ships without them.
+
+- `refs/props_sheet.png`: a sheet of hand-painted props (crates, barrels, lanterns), for proportion, bevel
+  width and the three-value material read.
+- `refs/material_swatches.png`: painted wood, stone and metal swatches, for stroke direction, edge highlights,
+  and how board gaps and mortar are painted.
+- `refs/hero_scale.png`: a character beside a doorway and a table, for the oversized architecture.

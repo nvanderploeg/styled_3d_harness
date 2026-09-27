@@ -9,17 +9,17 @@ You write a Blender build script that makes the asset's low-poly mesh from nothi
 
 ## 1. Spec
 
-If `assets/<slug>/` doesn't exist, run `pipeline/asset new <slug>`. Fill `asset.json` from the request: `brief`, `refs` (copy the images into `refs/`), `rig`, `tri_budget`, `texture_size`, `height_m`. Pick defaults from the budget guide in ASSET.md and write them into `brief`.
+If `assets/<slug>/` doesn't exist, run `pipeline/asset new <slug>`. Fill `asset.json` from the request: `brief`, `refs` (copy the images into `refs/`), `art`, `rig`, `tri_budget`, `texture_size`, `height_m`. Pick defaults from the world guide's budget classes, or from the budget guide in ASSET.md when there are none, and write them into `brief`.
 
 Settle `texture_size` now. `unwrap` pads islands in pixels at that size, so changing it later means rebuilding the model.
 
-Read every reference image. Done when `asset.json` has a real height, a budget, and a brief a stranger could model from.
+Read every reference image, and every guide `pipeline/asset art <slug>` lists: the world's shape language and scale, the zone's shape and wear, the set's construction and `kit` measurements. Done when `asset.json` has a real height, a budget, and a brief a stranger could model from.
 
 ## 2. Plan the silhouette
 
-Write the part list before any code. For each part give its shape, how you'll build it (lathe, extruded bmesh, a primitive plus modifiers), its zone, and its share of the tri budget. Spend triangles on **silhouette**: a loop earns its place by changing the outline in some view, by carrying a bend the rig will make, or by bounding a zone. Detail that doesn't reach the silhouette goes to the textures.
+Write the part list before any code. For each part give its shape, how you'll build it (lathe, extruded bmesh, a primitive plus modifiers), its zone, and its share of the tri budget. Spend triangles on **silhouette**: a loop earns its place by changing the outline in some view, by carrying a bend the rig will make, or by bounding a zone. Detail that doesn't reach the silhouette goes to the textures. Shape and size each part by the guides: their proportions, taper, lean and sag, their `scale` sizes, and the set's `kit` measurements.
 
-Done when every visible feature of the brief and refs belongs to a part, and the budget shares add up to no more than `tri_budget`.
+Done when every visible feature of the brief and refs belongs to a part, every shape rule in the guides is either in the plan or named as not applying, and the budget shares add up to no more than `tri_budget`.
 
 ## 3. Build and iterate
 
@@ -29,7 +29,7 @@ For a piece of a set, write the geometry as a function of the piece's parameters
 
 Add `shots` to `asset.json` for what the sheet tiles are too small to judge: the gameplay camera from the refs, joints, damaged edges.
 
-Run `pipeline/asset build <slug> model`. Fix every `FAIL`, and every `WARN` too unless you can say why it's harmless for this asset. Then read `review/model.png`, `review/model_uv.png` and `review/model_shots.png` and hold them to the rules below. For each reference, compare its silhouette to the matching tile.
+Run `pipeline/asset build <slug> model`. Fix every `FAIL`, and every `WARN` too unless you can say why it's harmless for this asset. Then read `review/model.png`, `review/model_uv.png` and `review/model_shots.png` and hold them to the rules below and the guides' shape rules. For each reference, compare its silhouette to the matching tile.
 
 Done when the check passes, every rule below holds in the sheets, and for each view you can say in one line how it matches the brief. Anything you can't match is a named gap, not a silent one.
 
@@ -43,7 +43,7 @@ Done when the check passes, every rule below holds in the sheets, and for each v
 
 ## Damage rules
 
-Damage means crumble, chips, breaks and wear cut into the mesh.
+Damage means crumble, chips, breaks and wear cut into the mesh. The zone and set guides say how much of it and where; these rules say how.
 
 - **Decisive bites.** Use about one bite per metre of damaged edge. Each bite is large, with flat fracture planes meeting at hard edges and a step or ledge where material is missing. Per-vertex noise and smooth dents read as melted clay. Mark the fracture creases with `sharpen` so they shade as facets.
 - **Seen from the side.** A bite drops the top edge too, not only its outline from above, so it reads from the gameplay camera.
@@ -53,5 +53,5 @@ Damage means crumble, chips, breaks and wear cut into the mesh.
 ## UV rules
 
 - **Seams** go on hard edges (`unwrap` marks these) and where they'll be seen least: bottoms, backs, insides, under overlapping parts. A cylinder gets one seam on its least visible side. Mark any extra seam in the script (`edge.seam = True` in bmesh) before `unwrap`.
-- **Texel density** stays uniform; the check enforces it. Scale an island up only for a deliberate reason, and record it in `limits.texel_density_tolerance` and `brief`. Give every piece of a set the same `limits.texel_density_px_per_m` range, and pick each piece's `texture_size` to land in it.
+- **Texel density** stays uniform; the check enforces it. Scale an island up only for a deliberate reason, and record it in `limits.texel_density_tolerance` and `brief`. When the limits in force carry a `texel_density_px_per_m` band, pick `texture_size` to land in it.
 - **Overlap** (stacked or mirrored islands) only when the brief accepts identical texturing on both sides. Set `limits.uv_overlap_ok` to allow it.

@@ -9,20 +9,20 @@ You give every zone one flat material read and bake it into the asset's first se
 
 ## 1. Pick a read per zone
 
-List the zones with `pipeline/asset check <slug> model` (the `zones` metric). For each zone, pick an sRGB colour, a roughness and a metallic of 0 or 1 from MATERIALS.md, nudged toward the brief and any refs.
+List the zones with `pipeline/asset check <slug> model` (the `zones` metric), and the palette and limits with `pipeline/asset art <slug>`. A zone with a palette swatch of its own name takes that swatch; the template's `zone_table` fills it in. For every other zone, pick an sRGB colour, a roughness and a metallic of 0 or 1 from MATERIALS.md, nudged toward the brief and any refs, inside the `albedo_luma` and `max_saturation` limits.
 
 Order the zones into a **value ladder**. The zone gameplay most needs seen (a jump edge, a handle, a hazard) takes the brightest or most contrasting rung. Zones that touch sit about 30 luma apart, so they separate in value at a squint, not only in hue. The check measures this: `zone_luma` per zone, and a WARN when neighbours fall under `limits.min_zone_contrast`.
 
-For a piece of a set, the zone table lives in `assets/_kit/` and every piece uses it unchanged.
+For a set, every swatch the pieces share lives in the set guide's palette. A zone WARN on a zone that takes its swatch is a guide problem, because changing a swatch changes every asset in the chain: report the zone, its neighbour and both lumas rather than working around it.
 
 Done when every zone has all three values and its rung on the ladder.
 
 ## 2. Build and review
 
-Copy `pipeline/templates/texture_base.py` to `build/texture_base.py`, fill in `ZONES`, and run `pipeline/asset build <slug> texture_base`. Fix every `FAIL` and every contrast `WARN`. Then read `review/texture_base.png`:
+Copy `pipeline/templates/texture_base.py` to `build/texture_base.py`, fill in `ZONES` for the zones the palette leaves out, and run `pipeline/asset build <slug> texture_base`. Fix every `FAIL` and every zone `WARN` (contrast, value key, saturation). Then read `review/texture_base.png`:
 
 - **Unlit tile.** Each zone reads as its material, and the whole asset matches the brief's colour story.
 - **Lit tiles.** Metals catch the HDRI, non-metals don't, and the roughness differences show.
 - **AO.** It darkens contacts and crevices only: under bands, between parts, in recesses.
 
-Done when the check passes with no contrast WARN and all three hold. For a set, `pipeline/asset compare texture_base <lead> <piece>...` also reads `CONSISTENT`.
+Done when the check passes with no zone WARN and all three hold. For a set, `pipeline/asset compare texture_base <lead> <piece>...` also reads `CONSISTENT`.

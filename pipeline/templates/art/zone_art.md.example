@@ -1,0 +1,88 @@
+# Zone: Duskwood
+
+An example zone guide for a haunted forest in the style of World of Warcraft's Duskwood. Copy it to
+`assets/_art/duskwood/zone_art.md`; it refines `world_art.md`, and the format is `pipeline/ART.md`.
+
+## Mood
+
+**Haunted twilight.** Cold moonlight, black fog and crooked shapes. The only warmth is the lamplight the
+villagers keep burning.
+
+## Story
+
+A once-quaint woodland under a curse of endless night. Worgen, the restless dead and giant spiders press in from
+the forest, and the Night Watch keeps the last village lit. Everything here is old, damp and holding on: well
+built once, patched since, and never quite repaired.
+
+## Palette and value
+
+- **Low key.** Surfaces sit in the lower half of the value range. The lightest are grey plaster and bleached
+  bone, and only lamplight comes near white.
+- **Cold and muted.** Hues lean blue-violet and grey-green, and saturation stays low. Browns are greyed, and
+  greens go olive.
+- **Lamplight is the accent.** Warm amber is the zone's one saturated colour. It is kept to lamp glass, lit
+  windows and fire, so the eye travels from light to light.
+- **Night for black.** The darkest values are `night`, a deep blue-violet, so shadows read as fog rather than
+  as holes.
+
+```json
+{"limits": {"albedo_luma": [28, 160], "max_saturation": 0.45},
+ "palette": {"night": {"color": "#1f2436"},
+             "fog": {"color": "#4a5a66"},
+             "earth": {"color": "#3d3630", "roughness": 0.95},
+             "moss": {"color": "#4c5a3a", "roughness": 0.95},
+             "dead_wood": {"color": "#5b544c", "roughness": 0.9},
+             "iron": {"color": "#34363d", "roughness": 0.75},
+             "glow": {"color": "#f2b457", "roughness": 0.7, "accent": true}}}
+```
+
+## Light
+
+- **Moonlight key.** The world's key direction, with a cold tint: lights shift toward pale blue, and shadows
+  toward violet.
+- **Hard terminator.** Less wrap than the world's, so forms turn sharply from lit to shadow.
+- **Sinking bases.** A stronger top-down gradient darkens the bottom of every object, as if it stood in fog.
+
+```json
+{"painted_light": {"light": [0.97, 1.0, 1.1], "shadow": [0.5, 0.48, 0.7], "wrap": 0.2, "top_strength": 0.3}}
+```
+
+## Shape
+
+- **Crooked.** Walls, posts, fences and gravestones lean by `shape.lean_deg`, further than the world's, and
+  ridges and rails sag between their supports by `shape.sag` of the span.
+- **Spiky skyline.** Dead branches, iron spikes, broken boards and bare rafters break every silhouette into
+  points.
+- **Tall and narrow.** Roofs, gables and trunks are steeper and narrower than in brighter zones, so the skyline
+  looks thin and clawed.
+
+```json
+{"shape": {"lean_deg": [1, 4], "sag": [0.02, 0.04], "claw_height": [1.4, 1.9]}}
+```
+
+## Wear
+
+- **Old and damp.** Moss gathers on tops, on north faces and where things meet the ground. Grime streaks run
+  down beneath every sill, beam and bracket.
+- **Patched in the village, broken outside it.** Village damage has been mended: boards nailed across splits,
+  and a replacement plank lighter than its neighbours. Outside the village, things stay broken: missing boards,
+  fallen stones, open roofs.
+- **Claw marks.** Worgen have tested every door and post. Three or four parallel gouges at `shape.claw_height`
+  are painted as dark lines with lit lips, and cut into the mesh only on large pieces.
+- **Cobwebs** fill high inside corners, painted as pale strokes that follow the corner.
+- **Clean where the player acts.** Walkable tops, doorways and anything the player uses keep their shape, and
+  wear goes on the faces around them.
+
+## Motifs
+
+Lanterns on iron posts and brackets. Iron spikes along fence tops. Crows on ridges and gravestones. Wanted
+posters and notices nailed to posts. Barricades of sharpened stakes. Gravestones leaning in rows.
+
+## References
+
+Keep the images in `refs/` beside this guide; the example ships without them.
+
+- `refs/village_street_night.png`: the village street at night, for the lamp spacing, the warm pools against
+  cold fog, and the value key.
+- `refs/forest_road.png`: the forest road, for dead-tree silhouettes against fog and the spiky skyline.
+- `refs/cemetery.png`: a cemetery, for leaning stones, the iron fence and moss at the bases.

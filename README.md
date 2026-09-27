@@ -24,9 +24,27 @@ pipeline/asset status crate
 pipeline/asset export crate      # assets/crate/export/crate.glb
 ```
 
-Sets of pieces share their generator and recipes in `assets/_kit/`. Two commands keep them honest:
+## Art guides
+
+Assets that must look like one game follow a chain of art guides in `assets/_art/`: the world's look, a zone's
+mood, and a set's construction and palette. [pipeline/ART.md](pipeline/ART.md) defines the format, and
+`pipeline/templates/art/` holds a worked example in the style of World of Warcraft's Duskwood.
+
+```
+pipeline/asset art duskwood/human_village     # the chain's guides in reading order, its palette and rules
+```
+
+## Sets
+
+Sets of pieces share a set guide, and their generator and recipes in `assets/_kit/`. Two commands keep them honest:
 
 ```
 pipeline/asset verify castle_platform_cross texture_ref     # rebuild in scratch space, diff against the approved stage
 pipeline/asset compare texture_ref castle_platform_straight castle_platform_cross   # zone brightness across the set
+```
+
+## Tests
+
+```
+~/opt/blender/blender --background --factory-startup --python pipeline/tests/test_art.py
 ```

@@ -7,6 +7,7 @@ import bpy
 import numpy as np
 from mathutils.kdtree import KDTree
 
+import art
 import uvmath
 
 
@@ -277,22 +278,36 @@ def texture_checks(a, r, stage):
 
 
 def zone_checks(a, r, stage, albedo, tri_uv, size):
-    """zone_luma: each zone's mean albedo luma (sRGB, 0–255), the number set pieces compare against.
-    On the base stage, neighbouring zones closer than limits.min_zone_contrast will not separate at a squint."""
+    """zone_luma and zone_saturation: each zone's mean albedo as sRGB luma (0–255) and HSV saturation;
+    set pieces compare zone_luma. limits.albedo_luma and limits.max_saturation bound every zone whose
+    swatch is not an accent. On the base stage, neighbouring zones closer than limits.min_zone_contrast
+    will not separate at a squint."""
     me = a.mesh.data
     mats = np.empty(len(me.loop_triangles), np.int32)
     me.loop_triangles.foreach_get("material_index", mats)
     res = min(size, 1024)
     step = size / res
-    luma = {}
+    luma, sat = {}, {}
     for i, m in enumerate(me.materials):
         mask = uvmath.raster(tri_uv[mats == i], res) > 0
         if not mask.any():
             continue
         ys, xs = np.nonzero(mask)
-        px = albedo[(ys * step).astype(int), (xs * step).astype(int)]
-        luma[m.name[5:]] = round(float((px @ np.array([0.299, 0.587, 0.114])).mean() * 255), 1)
+        mean = albedo[(ys * step).astype(int), (xs * step).astype(int)].mean(axis=0)
+        luma[m.name[5:]] = round(float(art.luma(mean)), 1)
+        sat[m.name[5:]] = round(float(art.saturation(mean)), 3)
     r.metrics["zone_luma"] = luma
+    r.metrics["zone_saturation"] = sat
+    band, cap = a.limits["albedo_luma"], a.limits["max_saturation"]
+    report = r.fail if stage == "texture_ref" else r.warn
+    for z in luma:
+        swatch = a.swatch(z)
+        if swatch and swatch["accent"]:
+            continue
+        if band and not band[0] <= luma[z] <= band[1]:
+            report(f"zone {z} has luma {luma[z]}, outside the value key limits.albedo_luma {band}")
+        if cap is not None and sat[z] > cap:
+            report(f"zone {z} has saturation {sat[z]}, above limits.max_saturation {cap}")
     if stage != "texture_base":
         return
     zone = {p.index: me.materials[p.material_index].name[5:] for p in me.polygons}

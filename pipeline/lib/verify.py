@@ -1,5 +1,5 @@
-"""Regression guards: rebuild a stage without touching its outputs and diff against what was approved,
-and compare zone metrics across the pieces of a set."""
+"""Regression guards: rebuild a stage without touching its outputs, diff against what was approved and
+re-check it under the current spec, and compare zone metrics across the pieces of a set."""
 import json
 import os
 import shutil
@@ -9,6 +9,7 @@ import tempfile
 import bpy
 import numpy as np
 
+import checks
 import imgio
 
 MESH_TOL = 1e-6
@@ -60,7 +61,8 @@ def diff_snapshots(old, new):
 
 
 def verify(a, stage, run_stage):
-    """Rebuild `stage` from its upstream .blend and script into scratch space, then diff it against the saved stage."""
+    """Rebuild `stage` from its upstream .blend and script into scratch space and diff it against the saved
+    stage. An IDENTICAL stage is checked again under the current spec; True when it is identical and passes."""
     bpy.ops.wm.open_mainfile(filepath=a.blend(stage))
     old = snapshot(a)
     tmp = tempfile.mkdtemp(prefix=f"verify_{a.slug}_")
@@ -77,13 +79,16 @@ def verify(a, stage, run_stage):
     for p in problems:
         print(f"CHANGED {p}")
     print(f"verify {stage}: {'IDENTICAL' if not problems else 'CHANGED'}")
+    if problems:
+        return False
+    # Re-check under the current spec: a limit can tighten while the build stays identical.
+    bpy.ops.wm.open_mainfile(filepath=a.blend(stage))
+    ok = checks.run(a, stage)
     rep = a.report(stage)
-    if rep is not None and not problems:
-        rep["verified"] = time.time()
-        rep["spec"] = a.fingerprint()
-        with open(a.path("review", f"{stage}.json"), "w") as f:
-            json.dump(rep, f, indent=2)
-    return not problems
+    rep["verified"] = time.time()
+    with open(a.path("review", f"{stage}.json"), "w") as f:
+        json.dump(rep, f, indent=2)
+    return ok
 
 
 def diff_maps(old_dir, new_dir, slug):

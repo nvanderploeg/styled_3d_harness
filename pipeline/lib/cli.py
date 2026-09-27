@@ -12,7 +12,8 @@ from asset import Asset  # noqa: E402
 sys.path.append(asset_mod.KIT)
 
 USAGE = ("pipeline/asset <new|build|check|review|verify|status|export> <slug> [stage]\n"
-         "       pipeline/asset compare <stage> <slug> <slug>... [--tolerance luma]")
+         "       pipeline/asset compare <stage> <slug> <slug>... [--tolerance luma]\n"
+         "       pipeline/asset art [<slug> | <zone>[/<set>]]")
 
 
 def open_source(a, stage):
@@ -38,7 +39,20 @@ def build(a, stage):
     print(f"built {a.blend(stage)}")
 
 
+def show_art(target):
+    """The art chain of an asset, or of a chain named directly while its guides are being written."""
+    import art
+    if target and os.path.exists(os.path.join(asset_mod.ASSETS, target, "asset.json")):
+        a = Asset(target)
+        art.show(a.art_files, a.art, asset_mod.ART, a.limits)
+    else:
+        files = art.chain(asset_mod.ART, target)
+        art.show(files, art.merge(files, asset_mod.LIMIT_DEFAULTS), asset_mod.ART)
+
+
 def main(argv):
+    if argv[:1] == ["art"]:
+        return show_art(argv[1] if len(argv) > 1 else "")
     if len(argv) < 2:
         raise SystemExit(USAGE)
     cmd, slug, *rest = argv

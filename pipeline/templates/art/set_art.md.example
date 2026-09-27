@@ -1,0 +1,104 @@
+# Set: Darkshire human village
+
+An example set guide for the timber-framed houses and street dressing of a Duskwood village, in the style of
+World of Warcraft's Darkshire. Copy it to `assets/_art/duskwood/human_village/set_art.md`; it refines the
+Duskwood zone guide, and the format is `pipeline/ART.md`.
+
+## Set
+
+**Tudor timber frame on fieldstone, built heavy and gone crooked:** dark oak frames, grey plaster, blue slate
+roofs and amber windows.
+
+## Construction
+
+Every building has two parts: a stone storey or plinth, and a timber-framed storey above it under a steep slate
+roof. Pieces snap to `kit.grid` and stack by the world's `scale.storey`.
+
+- **Stone below.** Fieldstone in big, irregular blocks with thick, recessed mortar, either as a full ground
+  storey or as a `kit.plinth` under a cottage. The largest stones sit at the corners.
+- **Frame above.** A sill beam on the stone, a post at every `kit.bay`, a mid rail, and a wall plate at the
+  eaves. Corner bays carry a curved brace at `kit.brace_deg`, and the panels between members are plaster.
+- **Jettied.** The framed storey oversails the stone by `kit.jetty`, carried on the ends of the floor joists,
+  which show as a row of beam ends under the sill.
+- **Roofs.** Steep gables at `kit.roof_pitch_deg` overhang the walls by `kit.overhang`, with a plain bargeboard
+  on every gable. Slates run in courses of `kit.slate_course`. Stone chimneys stand on the gable ends.
+- **Openings.** Doors are planked, arched in the stone storey and square in the frame, and each hangs on two
+  long iron strap hinges. Windows are timber-framed with a cross mullion, and lit glass is `zone_glow`.
+
+```json
+{"kit": {"grid": 0.5, "bay": 2.0, "plinth": 0.9, "beam": 0.28, "overshoot": 0.1, "brace_deg": 50,
+         "jetty": 0.35, "roof_pitch_deg": 55, "overhang": 0.5, "slate_course": 0.22}}
+```
+
+## Materials
+
+Each mesh zone takes the swatch of its name. The zone guide supplies `iron`, `moss` and `glow`.
+
+- **Timber.** The darkest material: dark, weathered oak. Grain runs the length of each member in long strokes,
+  and ends are chamfered and lighter where worn. From across the street the frame reads as a dark lattice on the
+  plaster.
+- **Planks.** Doors, shutters and boarding, a rung lighter than the frame so that iron hinges read against them.
+  A dark gap runs between every board.
+- **Plaster.** The lightest large surface: grey plaster dulled by damp. Stains run down from every beam above
+  it, and cracks start at the panel corners.
+- **Stone.** Cool grey fieldstone. Each block has a lit top edge and a shadowed base, and the mortar is recessed
+  and darker than any block.
+- **Roof.** Blue-grey slate, the Alliance roof muted by the zone, with lighter slates scattered where some have
+  been replaced.
+- **Iron.** Hinges, brackets and lamp cages. Iron sits on planks, plaster or stone, where the value ladder
+  separates it; on the frame it would merge with the timber.
+
+```json
+{"palette": {"timber": {"color": "#3f3129", "roughness": 0.85},
+             "planks": {"color": "#664f3d", "roughness": 0.85},
+             "plaster": {"color": "#9a9286", "roughness": 0.95},
+             "stone": {"color": "#75726b", "roughness": 0.9},
+             "roof": {"color": "#4a5266", "roughness": 0.8}}}
+```
+
+## Shape
+
+- **Chunky frame.** Beams are `kit.beam` square, thicker than real timber, and their ends overshoot each joint
+  by `kit.overshoot`.
+- **Leaning storeys.** A storey leans as one piece by the zone's lean, and a jettied storey leans out over the
+  street.
+- **Tall roofs.** A roof stands at least as tall as the walls below it, and the gables carry the silhouette
+  seen from the street.
+- **Bowed braces.** Braces curve, bowing away from the corner they brace.
+
+## Damage
+
+Where the zone's wear lands on this set:
+
+- **Roofs** lose slates in patches of three to six, which show the battens and a dark gap. The eaves' corners
+  stay whole, because they carry the roof's silhouette.
+- **Plaster** breaks away at panel corners to show diagonal lath strips beneath it, and the frame around it
+  stays whole.
+- **Board ends** rot into a darker, rougher band with a chipped, rounded end.
+- **Claw marks** go on doors, shutters and corner posts.
+- **Doors, thresholds and steps** stay whole and square, for gameplay.
+
+## Pieces
+
+Build them in this order. The lamppost leads because it carries iron, timber, stone and glow in one small piece.
+
+| piece | budget class | what it is |
+|---|---|---|
+| `darkshire_lamppost` | large_prop | an iron post on a stone foot, with a lantern of lit glass |
+| `darkshire_fence` | large_prop | one bay of timber fence between iron-spiked posts |
+| `darkshire_wall_bay` | building_piece | one bay: a stone storey with a door or window, and the framed storey above |
+| `darkshire_gable` | building_piece | a gable end with its bargeboard and chimney |
+| `darkshire_roof` | building_piece | one bay of slate roof, ridge to eaves |
+| `darkshire_barricade` | large_prop | a Night Watch barricade of sharpened stakes |
+| `darkshire_notice_post` | small_prop | a post with a wanted poster and a hanging sign |
+
+## References
+
+Keep the images in `refs/` beside this guide; the example ships without them.
+
+- `refs/town_hall_front.png`: the town hall's front, for the frame pattern, the stone storey and the clock
+  gable.
+- `refs/tavern_corner.png`: a corner of the tavern, for the jetty, the beam ends and the corner brace.
+- `refs/lamppost.png`: the street lamppost, for the proportions of post, bracket and lantern.
+- `refs/tudor_jetty.jpg`: a real jettied Tudor house, for construction logic only; exaggerate every proportion
+  it shows.

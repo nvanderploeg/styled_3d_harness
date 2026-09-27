@@ -6,6 +6,8 @@ import photo
 from nodes import srgb, tree
 
 STYLIZED = asset.spec["texture_mode"] == "stylized"
+LIGHT = {"key": (0.4, -0.5, 0.75), "edge_radius": 0.01, **asset.art.get("painted_light", {})}   # the guides' light wins
+BRUSH = asset.art.get("brush", {})
 
 z = tree(bpy.data.materials["zone_main"])
 pos = z.coords("Object")                     # metres; seamless across UV seams
@@ -14,7 +16,8 @@ grain = z.noise(scale=30, detail=6, vector=streaks)
 base = z.ramp(grain, [(0.2, srgb("#5a3520")), (0.5, srgb("#8a5a3b")), (0.9, srgb("#b07a4e"))])
 rough = z.map_range(grain, 0, 1, 0.9, 0.7)
 if STYLIZED:
-    z.out(z.painted_light(base, top=(0, asset.mesh.dimensions.z), edge_radius=0.01), rough, 0.0)
+    lit = z.painted_light(base, top=(0, asset.mesh.dimensions.z), **LIGHT)
+    z.out(z.brush(lit, pos, **BRUSH), rough, 0.0)
 else:
     # src = photo.prepare(asset.path("refs", "wood.jpg"), asset.path("refs", "wood_tile.png"))
     # h, r = photo.derive(src, asset.path("refs", "wood_h.png"), asset.path("refs", "wood_r.png"))

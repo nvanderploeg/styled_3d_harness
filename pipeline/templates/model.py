@@ -19,4 +19,4 @@ m.zone(body, "main")
 
 m.finalize(asset, [body])  # joins parts, welds, origin to bottom centre, smooth-by-angle
 m.unwrap(asset)            # seams on hard edges plus any marked, even texel density, packed
-# m.make_high(asset, bevel=0.01)  # rounded-edge twin for normal/AO bakes
+# m.make_high(asset, **asset.art.get("make_high", {}))  # rounded-edge twin for normal/AO bakes

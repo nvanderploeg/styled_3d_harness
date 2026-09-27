@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pipeline/asset <new|build|check|review|status|export> <slug> [stage]
+# pipeline/asset <command> ... — the commands are in pipeline/ASSET.md
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 BLENDER="${BLENDER:-$HOME/opt/blender/blender}"
