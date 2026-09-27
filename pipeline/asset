@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# pipeline/asset <new|build|check|review|status|export> <slug> [stage]
+set -u
+here="$(cd "$(dirname "$0")" && pwd)"
+BLENDER="${BLENDER:-$HOME/opt/blender/blender}"
+NOISE='^(Color management|Read blend|Blender quit|Blender [0-9.]+ |INFO Draco|$)|\| INFO: '
+
+blend() {
+  "$BLENDER" --background --factory-startup --quiet --python-exit-code 1 \
+    --python "$here/lib/cli.py" -- "$@" 2>&1 | grep -vE "$NOISE"
+  return "${PIPESTATUS[0]}"
+}
+
+if [[ "${1:-}" == build ]]; then
+  blend build "${@:2}" || exit $?
+  blend check "${@:2}"
+  status=$?
+  blend review "${@:2}" || exit $?
+  exit "$status"
+fi
+blend "$@"
