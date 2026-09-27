@@ -1,7 +1,7 @@
 # World: Warcraft-style fantasy
 
-An example world guide in the style of World of Warcraft. Copy it to `assets/_art/world_art.md` and make it
-your game's; the format is `pipeline/ART.md`.
+An example world guide in the style of World of Warcraft. Copy it to `assets/_art/azeroth/world_art.md` and
+make it your game's; the format is `pipeline/ART.md`.
 
 ## Style
 

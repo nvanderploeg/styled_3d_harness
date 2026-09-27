@@ -5,9 +5,9 @@ pipeline skill reads the guides of the asset it works on.
 
 | layer | file | owns | for example |
 |---|---|---|---|
-| world | `world_art.md` | the game's look: shape language, painting technique, scale, budgets | chunky, hand-painted |
-| zone | `<zone>/zone_art.md` | a region's mood: palette, value key, light, wear | Duskwood: dark, haunted |
-| set | `<zone>/<set>/set_art.md` | a family of assets: construction, materials, kit numbers, pieces | Darkshire's timber houses |
+| world | `<world>/world_art.md` | the game's look: shape language, painting technique, scale, budgets | chunky, hand-painted |
+| zone | `<world>/<zone>/zone_art.md` | a region's mood: palette, value key, light, wear | Duskwood: dark, haunted |
+| set | `<world>/<zone>/<set>/set_art.md` | a family of assets: construction, materials, kit numbers, pieces | Darkshire's timber houses |
 
 Each layer refines the one above: a zone sets its mood with the world's technique, and a set picks its materials
 from the zone's palette. A *zone* here is a region of the game; the `zone_<name>` materials of a mesh are called
@@ -17,23 +17,26 @@ from the zone's palette. A *zone* here is a region of the game; the `zone_<name>
 
 ```
 assets/_art/
-  world_art.md                   heads every chain, when it exists
-  <zone>/zone_art.md
-  <zone>/<set>/set_art.md
+  <world>/world_art.md
+  <world>/<zone>/zone_art.md
+  <world>/<zone>/<set>/set_art.md
   .../refs/                      the images a guide names, beside it
 ```
 
-An asset joins a chain with `"art": "<zone>"` or `"art": "<zone>/<set>"` in `asset.json`.
+An asset joins a chain with `"art": "<world>"`, `"<world>/<zone>"` or `"<world>/<zone>/<set>"` in `asset.json`,
+and follows only the guides on that chain. Each world is one game's look, so several games can share one
+`assets/` folder.
 
 ```
-pipeline/asset art <slug>           the asset's guides in reading order, its palette, and every rule in force
-pipeline/asset art <zone>[/<set>]   the same for a chain whose guides are being written
-pipeline/asset art                  the world guide alone
+pipeline/asset art                            every chain in assets/_art/
+pipeline/asset art <slug>                     the asset's guides in reading order, its palette, every rule in force
+pipeline/asset art <chain> [--sheet <png>]    the same for a chain; the sheet draws each swatch, dark to light,
+                                              as shadow, base and lit under the chain's light, then as grey
 ```
 
 Worked examples in the style of World of Warcraft live in `pipeline/templates/art/`: `world_art.md.example`,
-`zone_art.md.example` (Duskwood) and `set_art.md.example` (Darkshire's human village). Copy them into
-`assets/_art/`, dropping the `.example` suffix, to start a game's guides.
+`zone_art.md.example` (Duskwood) and `set_art.md.example` (Darkshire's human village). Each names the path it
+belongs at under `assets/_art/azeroth/`.
 
 ## Format
 
@@ -53,7 +56,7 @@ Sections, in order:
 |---|---|---|---|
 | `texture_mode` | world | `"stylized"` or `"pbr"`, for assets whose `asset.json` leaves it unset | the texture stages |
 | `limits` | any | defaults for the `asset.json` limits listed in ASSET.md | checks |
-| `palette` | zone, set | swatches by name: `{"color": "#rrggbb", "roughness", "metallic", "accent"}` | `asset.zone_table`, `asset.swatch`, checks |
+| `palette` | zone, set | swatches by name: `{"color": "#rrggbb", "roughness", "metallic", "accent", "touches"}` | `asset.zone_table`, `asset.swatch`, checks |
 | `painted_light`, `brush`, `make_high` | world, zone | keyword arguments for the helper of that name | build scripts |
 | `budgets` | world | per asset class: `tri_budget`, `texture_size`, and any `limits` | make-asset, writing a spec |
 | `scale` | world | reference sizes in metres: a character, a door, a storey | model-asset |
@@ -65,6 +68,10 @@ Sections, in order:
   for recipes to paint with, through `asset.swatch(name)`. `roughness` defaults to 0.8 and `metallic` to 0.
 - **Accents.** A swatch with `"accent": true` (lamplight, magic, heraldry) may leave the value and saturation
   limits. Keep accents few; they are where the eye goes first.
+- **Touching.** `touches` names the swatches this one shares an edge with on one mesh: a frame and its plaster, a
+  door and its hinges. A colour painted over another inside one zone, like moss on a roof, is not a touch. Declare
+  a pair on either swatch, or on the lower guide's when the two come from different guides. `pipeline/asset art`
+  rejects a pair closer than `limits.min_zone_contrast`.
 - **Value key.** `limits.albedo_luma` `[min, max]` bounds each mesh zone's mean albedo luma (sRGB, 0–255), and
   `limits.max_saturation` bounds its HSV saturation. The texture checks FAIL on both at `texture_ref` and WARN
   at `texture_base`.
@@ -76,22 +83,12 @@ The chain merges world, then zone, then set, then the asset's own `asset.json`:
 - Objects merge key by key. Any other value in a later guide replaces the earlier one.
 - A later guide's `limits` only tighten: a `min_*` rises, a `max_*` falls, and a `[lo, hi]` range narrows.
   `pipeline/asset art` rejects a guide that loosens one.
-- Every swatch that is not an accent sits inside the merged value and saturation limits.
+- Every swatch that is not an accent sits inside the merged value and saturation limits, and every touching
+  pair clears the merged `min_zone_contrast`.
 - The `limits` in `asset.json` override the guides for that one asset, as an exception named in its `brief`.
 - A changed json rule marks the chain's built stages `spec changed`, and `verify` rebuilds and re-checks them.
   Prose marks nothing, so review the chain's assets against changed prose at their next rebuild.
 
 ## Writing a guide
 
-- **Open with leading words.** The one-line Style, Mood or Set is the look in the fewest words that call it to
-  mind: *chunky, hand-painted, readable at a glance*.
-- **Observable rules.** Phrase each rule as something a reviewer can point at on a review sheet: "every long
-  edge bows or tapers", never "shapes feel organic".
-- **State the target.** Where a guardrail can't be put positively, pair it with what to do instead.
-- **Measurements in json.** Sizes, angles, ratios and colours live in the json under their section. The prose
-  names the key and says what it looks like on the asset.
-- **One home per decision.** What every piece of a set shares goes in the set guide; a piece's `brief` holds
-  only what is its own.
-- **Name each ref and what to take from it**, so a reader knows which part of the image binds.
-
-Done when `pipeline/asset art <chain>` accepts it and every rule names something a review sheet can show.
+The `art-guide` skill writes and revises guides, and holds the rules for writing one.

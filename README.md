@@ -9,6 +9,7 @@ Claude Code skills that make game-ready 3D assets in Blender, from a brief and r
 | `rig-asset` | by Claude or you | deform skeleton, skin weights and a `rig_test` action |
 | `texture-base` | by Claude or you | flat material per zone, baked with AO |
 | `texture-from-reference` | by Claude or you | stylized (painted light) or PBR maps matched to references |
+| `art-guide` | by Claude or you | the world, zone or set art guide that assets of one game follow |
 
 Every stage is a Blender build script under `assets/<slug>/build/`. `pipeline/asset build` runs it, checks the result
 against hard limits, and renders a review sheet. See [pipeline/ASSET.md](pipeline/ASSET.md) for the asset contract.
@@ -31,7 +32,8 @@ mood, and a set's construction and palette. [pipeline/ART.md](pipeline/ART.md) d
 `pipeline/templates/art/` holds a worked example in the style of World of Warcraft's Duskwood.
 
 ```
-pipeline/asset art duskwood/human_village     # the chain's guides in reading order, its palette and rules
+pipeline/asset art                                    # every chain
+pipeline/asset art azeroth/duskwood/human_village     # one chain's guides in reading order, its palette and rules
 ```
 
 ## Sets

@@ -8,13 +8,14 @@ import re
 
 import numpy as np
 
-WORLD = "world_art.md"
-LEVELS = ("zone_art.md", "set_art.md")
+import imgio
+
+LEVELS = ("world_art.md", "zone_art.md", "set_art.md")
 BLOCK = re.compile(r"^```json[ \t]*\n(.*?)^```", re.M | re.S)
 HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 LUMA = np.array([0.299, 0.587, 0.114])
 
-SWATCH = {"color": None, "roughness": 0.8, "metallic": 0, "accent": False}
+SWATCH = {"color": None, "roughness": 0.8, "metallic": 0, "accent": False, "touches": []}
 BUDGET = {"tri_budget", "texture_size", "limits"}
 HELPERS = {"painted_light": ("nodes", "Tree.painted_light"), "brush": ("nodes", "Tree.brush"),
            "make_high": ("modeling", "make_high")}
@@ -39,20 +40,40 @@ def rgb(hex_):
     return np.array([int(hex_[i:i + 2], 16) for i in (1, 3, 5)]) / 255
 
 
+def linear(srgb):
+    c = np.asarray(srgb, dtype=float)
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+
+
+def encode(lin):
+    c = np.clip(np.asarray(lin, dtype=float), 0.0, 1.0)
+    return np.where(c <= 0.0031308, c * 12.92, 1.055 * c ** (1 / 2.4) - 0.055)
+
+
 def chain(root, name):
-    """Guide files for chain `name` ("", "<zone>" or "<zone>/<set>") in reading order.
-    world_art.md heads every chain when it exists."""
+    """Guide files for chain `name` ("<world>", "<world>/<zone>" or "<world>/<zone>/<set>") in reading
+    order. No name means no guides."""
     parts = [p for p in (name or "").split("/") if p]
     if len(parts) > len(LEVELS):
-        raise SystemExit(f"art '{name}' has {len(parts)} levels; a chain is <zone> or <zone>/<set>")
-    world = os.path.join(root, WORLD)
-    files = [world] if os.path.exists(world) else []
+        raise SystemExit(f"art '{name}' has {len(parts)} levels; a chain is <world>[/<zone>[/<set>]]")
+    files = []
     for i, level in enumerate(LEVELS[:len(parts)]):
         path = os.path.join(root, *parts[:i + 1], level)
         if not os.path.exists(path):
             raise SystemExit(f"art '{name}' needs {path} (pipeline/ART.md)")
         files.append(path)
     return files
+
+
+def chains(root):
+    """Every chain under root whose own guide exists."""
+    found = []
+    for dirpath, _, names in os.walk(root):
+        rel = os.path.relpath(dirpath, root)
+        parts = [] if rel == "." else rel.split(os.sep)
+        if 0 < len(parts) <= len(LEVELS) and LEVELS[len(parts) - 1] in names:
+            found.append("/".join(parts))
+    return sorted(found)
 
 
 def parse(path):
@@ -101,7 +122,7 @@ def merge(files, limit_names):
             _tighten(k, above.get(k), v, origin.get(k), path)
             origin[k] = path
         _override(rules, level)
-    _check_palette(rules, files)
+    _check_palette(rules, files, limit_names)
     return rules
 
 
@@ -138,6 +159,9 @@ def _check_keys(rules, path, limit_names):
             raise SystemExit(f"{path}: palette.{name}.color {s['color']!r} is not '#rrggbb' sRGB")
         if s.get("metallic", 0) not in (0, 1):
             raise SystemExit(f"{path}: palette.{name}.metallic is 0 or 1 (pipeline/MATERIALS.md)")
+        touches = s.get("touches", [])
+        if not isinstance(touches, list) or not all(isinstance(t, str) for t in touches):
+            raise SystemExit(f"{path}: palette.{name}.touches is a list of swatch names")
     for cls, b in rules.get("budgets", {}).items():
         extra = set(b) - BUDGET if isinstance(b, dict) else {"(not an object)"}
         if extra:
@@ -151,19 +175,43 @@ def _check_keys(rules, path, limit_names):
             raise SystemExit(f"{path}: {helper} takes {sorted(_kwargs(helper))}, not {sorted(extra)}")
 
 
-def _kwargs(helper):
+def _defaults(helper):
     mod, attr = HELPERS[helper]
     fn = importlib.import_module(mod)
     for part in attr.split("."):
         fn = getattr(fn, part)
-    return {p.name for p in inspect.signature(fn).parameters.values() if p.default is not p.empty} - PER_ASSET
+    return {p.name: p.default for p in inspect.signature(fn).parameters.values()
+            if p.default is not p.empty and p.name not in PER_ASSET}
 
 
-def _check_palette(rules, files):
+def _kwargs(helper):
+    return set(_defaults(helper))
+
+
+def touching(rules):
+    """Each declared pair of swatches that share an edge on one mesh, once, with its luma gap."""
+    palette = rules.get("palette", {})
+    pairs = {tuple(sorted((a, b))) for a, s in palette.items() for b in s.get("touches", []) if b in palette}
+    return [(a, b, abs(float(luma(rgb(palette[a]["color"]))) - float(luma(rgb(palette[b]["color"])))))
+            for a, b in sorted(pairs)]
+
+
+def _check_palette(rules, files, limit_defaults):
     limits = rules.get("limits", {})
     band, cap = limits.get("albedo_luma"), limits.get("max_saturation")
+    floor = limits.get("min_zone_contrast", limit_defaults["min_zone_contrast"])
     where = files[-1] if files else "palette"
-    for name, s in rules.get("palette", {}).items():
+    palette = rules.get("palette", {})
+    for name, s in palette.items():
+        missing = [t for t in s.get("touches", []) if t not in palette]
+        if missing:
+            raise SystemExit(f"{where}: palette.{name} touches {missing}, which no guide on the chain names; "
+                             "declare a pair on the swatch of the lower guide")
+    for a, b, gap in touching(rules):
+        if gap < floor:
+            raise SystemExit(f"{where}: palette {a} and {b} touch but sit {gap:.0f} luma apart, under "
+                             f"limits.min_zone_contrast {floor}; move one, or keep them off a shared edge")
+    for name, s in palette.items():
         if "color" not in s:
             raise SystemExit(f"{where}: palette.{name} has no color")
         if s.get("accent"):
@@ -178,21 +226,46 @@ def _check_palette(rules, files):
                              f"limits.max_saturation {cap}; mute it or mark it an accent")
 
 
+def dark_to_light(rules):
+    """The palette's swatches, defaults filled in, from darkest to lightest."""
+    swatches = [(name, {**SWATCH, **s}) for name, s in rules.get("palette", {}).items()]
+    return sorted(swatches, key=lambda item: float(luma(rgb(item[1]["color"]))))
+
+
+def sheet(rules, path, cell=64):
+    """A palette card for judging a guide by eye: one row per swatch, darkest at the top, showing its
+    shadow, base and lit colour under the chain's painted light, then its luma as grey."""
+    light = {**_defaults("painted_light"), **rules.get("painted_light", {})}
+    rows = []
+    for _, s in dark_to_light(rules):
+        c = rgb(s["color"])
+        base = linear(c)
+        grey = np.full(3, float(luma(c)) / 255)
+        cells = [encode(base * light["shadow"]), c, encode(base * light["light"]), grey]
+        rows.append(np.concatenate([np.broadcast_to(v, (cell, cell, 3)) for v in cells], axis=1))
+    if not rows:
+        raise SystemExit("the chain has no palette to draw")
+    imgio.write(np.flipud(np.concatenate(rows, axis=0)), path)
+    print(f"sheet: {path}  (rows dark to light as listed; columns shadow, base, lit, grey)")
+
+
 def show(files, rules, root, limits=None):
-    """Print the chain's guides in reading order, its palette, and its other rules."""
+    """Print the chain's guides in reading order, its palette from dark to light, and its other rules."""
     print("read, in order:" if files else "no art guides: this asset follows the pipeline defaults")
     for f in files:
         print(f"  {f}")
-    palette = rules.get("palette", {})
-    if palette:
+    if rules.get("palette"):
         home = {name: os.path.relpath(f, root) for f in files for name in parse(f).get("palette", {})}
-        print("palette:")
+        print("palette, dark to light:")
         print(f"  {'swatch':12} {'color':8} {'luma':>5} {'sat':>5} {'rough':>5} {'metal':>5}  from")
-        for name, s in palette.items():
-            s = {**SWATCH, **s}
+        for name, s in dark_to_light(rules):
             c = rgb(s["color"])
             print(f"  {name:12} {s['color']:8} {float(luma(c)):5.0f} {float(saturation(c)):5.2f} "
                   f"{s['roughness']:5} {s['metallic']:5}  {home[name]}{'  (accent)' if s['accent'] else ''}")
+    pairs = touching(rules)
+    if pairs:
+        print("touching pairs, luma gap:")
+        print("  " + ", ".join(f"{a}/{b} {gap:.0f}" for a, b, gap in pairs))
     rest = {k: v for k, v in rules.items() if k != "palette"}
     if rest:
         print("rules:")

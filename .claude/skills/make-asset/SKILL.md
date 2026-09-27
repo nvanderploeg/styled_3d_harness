@@ -10,9 +10,9 @@ You are the **orchestrator**. You hold the spec, dispatch each stage to a fresh 
 
 ## 1. Guides
 
-List `assets/_art/` and place the request in a chain: the zone it belongs to, if any, and its set, if it has one. When the request brings a look, a region or a set that no guide covers yet, write that guide now, from the request and its refs, following ART.md and the examples in `pipeline/templates/art/`. A set always gets a set guide.
+Run `pipeline/asset art` to list the chains, and place the request in one: its world, its zone if it has one, and its set if it has one. When the request brings a look, a region or a set that no guide covers yet, write that guide now with the `art-guide` skill. A set always gets a set guide.
 
-Done when `pipeline/asset art <zone>[/<set>]` accepts the chain (bare `pipeline/asset art` for the world alone), and you have posted each new guide's one-line Style, Mood or Set.
+Done when `pipeline/asset art <chain>` accepts the chain, and you have posted each new guide's one-line Style, Mood or Set.
 
 ## 2. Spec
 

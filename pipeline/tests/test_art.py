@@ -18,11 +18,14 @@ import bpy  # noqa: E402
 
 import art  # noqa: E402
 import asset as asset_mod  # noqa: E402
+import imgio  # noqa: E402
 
 ART = asset_mod.ART
 LIMITS = asset_mod.LIMIT_DEFAULTS
-CHAIN = "duskwood/human_village"
-PLACES = {"world_art.md": "", "zone_art.md": "duskwood", "set_art.md": CHAIN}
+WORLD = "azeroth"
+ZONE = "azeroth/duskwood"
+CHAIN = "azeroth/duskwood/human_village"
+PLACES = {"world_art.md": WORLD, "zone_art.md": ZONE, "set_art.md": CHAIN}
 
 
 def install_examples():
@@ -71,72 +74,103 @@ def test_examples_merge_world_then_zone_then_set():
 
 
 def test_a_lower_guide_cannot_loosen_a_max():
-    write_guide("duskwood", "zone_art.md", {"limits": {"max_saturation": 0.9}})
-    rejects(lambda: rules("duskwood"), "loosens")
+    write_guide(ZONE, "zone_art.md", {"limits": {"max_saturation": 0.9}})
+    rejects(lambda: rules(ZONE), "loosens")
 
 
 def test_a_lower_guide_cannot_widen_a_range():
-    write_guide("duskwood", "zone_art.md", {"limits": {"albedo_luma": [10, 160]}})
-    rejects(lambda: rules("duskwood"), "loosens")
+    write_guide(ZONE, "zone_art.md", {"limits": {"albedo_luma": [10, 160]}})
+    rejects(lambda: rules(ZONE), "loosens")
 
 
 def test_a_lower_guide_cannot_lower_a_min():
-    write_guide("duskwood", "zone_art.md", {"limits": {"min_zone_contrast": 12}})
-    rejects(lambda: rules("duskwood"), "loosens")
+    write_guide(ZONE, "zone_art.md", {"limits": {"min_zone_contrast": 12}})
+    rejects(lambda: rules(ZONE), "loosens")
 
 
 def test_a_lower_guide_cannot_switch_a_limit_off():
-    write_guide("duskwood", "zone_art.md", {"limits": {"max_saturation": None}})
-    rejects(lambda: rules("duskwood"), "loosens")
+    write_guide(ZONE, "zone_art.md", {"limits": {"max_saturation": None}})
+    rejects(lambda: rules(ZONE), "loosens")
 
 
 def test_a_lower_guide_may_tighten():
-    write_guide("duskwood", "zone_art.md", {"limits": {"albedo_luma": [30, 120], "min_zone_contrast": 30}})
-    assert rules("duskwood")["limits"]["albedo_luma"] == [30, 120]
+    write_guide(ZONE, "zone_art.md", {"limits": {"albedo_luma": [30, 120], "min_zone_contrast": 30}})
+    assert rules(ZONE)["limits"]["albedo_luma"] == [30, 120]
 
 
 def test_unknown_rules_and_limits_are_rejected():
-    write_guide("duskwood", "zone_art.md", {"colours": {}})
-    rejects(lambda: rules("duskwood"), "unknown rules")
-    write_guide("duskwood", "zone_art.md", {"limits": {"max_saturaton": 0.5}})
-    rejects(lambda: rules("duskwood"), "not limits")
+    write_guide(ZONE, "zone_art.md", {"colours": {}})
+    rejects(lambda: rules(ZONE), "unknown rules")
+    write_guide(ZONE, "zone_art.md", {"limits": {"max_saturaton": 0.5}})
+    rejects(lambda: rules(ZONE), "not limits")
 
 
 def test_helper_blocks_take_only_the_helpers_keywords():
-    write_guide("duskwood", "zone_art.md", {"painted_light": {"strength": 1}})
-    rejects(lambda: rules("duskwood"), "painted_light takes")
-    write_guide("duskwood", "zone_art.md", {"painted_light": {"top": [0, 1]}})
-    rejects(lambda: rules("duskwood"), "painted_light takes")
+    write_guide(ZONE, "zone_art.md", {"painted_light": {"strength": 1}})
+    rejects(lambda: rules(ZONE), "painted_light takes")
+    write_guide(ZONE, "zone_art.md", {"painted_light": {"top": [0, 1]}})
+    rejects(lambda: rules(ZONE), "painted_light takes")
 
 
 def test_a_key_set_twice_in_one_guide_is_rejected():
-    write_guide("duskwood", "zone_art.md", {"limits": {"max_saturation": 0.5}}, {"limits": {"max_saturation": 0.4}})
-    rejects(lambda: rules("duskwood"), "set in two blocks")
+    write_guide(ZONE, "zone_art.md", {"limits": {"max_saturation": 0.5}}, {"limits": {"max_saturation": 0.4}})
+    rejects(lambda: rules(ZONE), "set in two blocks")
 
 
 def test_blocks_of_one_guide_join():
-    write_guide("duskwood", "zone_art.md", {"limits": {"max_saturation": 0.5}}, {"limits": {"albedo_luma": [20, 200]}})
-    assert rules("duskwood")["limits"] == {**rules("")["limits"], "max_saturation": 0.5, "albedo_luma": [20, 200]}
+    write_guide(ZONE, "zone_art.md", {"limits": {"max_saturation": 0.5}}, {"limits": {"albedo_luma": [20, 200]}})
+    assert rules(ZONE)["limits"] == {**rules(WORLD)["limits"], "max_saturation": 0.5, "albedo_luma": [20, 200]}
 
 
 def test_every_plain_swatch_sits_inside_the_value_key():
-    write_guide("duskwood", "zone_art.md", {"limits": {"albedo_luma": [28, 160]},
-                                            "palette": {"bone": {"color": "#e8e4dc"}}})
-    rejects(lambda: rules("duskwood"), "outside limits.albedo_luma")
-    write_guide("duskwood", "zone_art.md", {"limits": {"max_saturation": 0.45},
-                                            "palette": {"blood": {"color": "#a01010"}}})
-    rejects(lambda: rules("duskwood"), "above limits.max_saturation")
+    write_guide(ZONE, "zone_art.md", {"limits": {"albedo_luma": [28, 160]},
+                                      "palette": {"bone": {"color": "#e8e4dc"}}})
+    rejects(lambda: rules(ZONE), "outside limits.albedo_luma")
+    write_guide(ZONE, "zone_art.md", {"limits": {"max_saturation": 0.45},
+                                      "palette": {"blood": {"color": "#a01010"}}})
+    rejects(lambda: rules(ZONE), "above limits.max_saturation")
 
 
 def test_accents_may_leave_the_value_key():
-    write_guide("duskwood", "zone_art.md", {"limits": {"albedo_luma": [28, 160]},
-                                            "palette": {"bone": {"color": "#e8e4dc", "accent": True}}})
-    assert rules("duskwood")["palette"]["bone"]["accent"] is True
+    write_guide(ZONE, "zone_art.md", {"limits": {"albedo_luma": [28, 160]},
+                                      "palette": {"bone": {"color": "#e8e4dc", "accent": True}}})
+    assert rules(ZONE)["palette"]["bone"]["accent"] is True
+
+
+def test_touching_swatches_keep_the_contrast_floor():
+    write_guide(ZONE, "zone_art.md", {"palette": {"trunk": {"color": "#505050", "touches": ["soil"]},
+                                                  "soil": {"color": "#585858"}}})
+    rejects(lambda: rules(ZONE), "touch but sit 8 luma apart")
+    write_guide(ZONE, "zone_art.md", {"palette": {"trunk": {"color": "#505050", "touches": ["ghost"]}}})
+    rejects(lambda: rules(ZONE), "which no guide on the chain names")
+    write_guide(ZONE, "zone_art.md", {"palette": {"trunk": {"color": "#505050", "touches": "soil"}}})
+    rejects(lambda: rules(ZONE), "list of swatch names")
+
+
+def test_the_examples_declare_their_touching_pairs():
+    pairs = {(a, b) for a, b, _ in art.touching(rules())}
+    assert ("planks", "timber") in pairs and ("earth", "stone") in pairs, "set swatches pair with zone swatches"
 
 
 def test_a_chain_needs_every_guide_it_names():
     rejects(lambda: art.chain(ART, "nowhere"), "needs")
-    rejects(lambda: art.chain(ART, "a/b/c"), "levels")
+    rejects(lambda: art.chain(ART, "a/b/c/d"), "levels")
+
+
+def test_an_asset_follows_only_the_chain_it_names():
+    assert art.chain(ART, None) == [], "no art field, no guides, however many worlds exist"
+    assert new_asset("unguided_probe").art == {}
+    assert art.chains(ART) == [WORLD, ZONE, CHAIN]
+
+
+def test_the_sheet_draws_every_swatch_darkest_first():
+    path = os.path.join(ROOT, "sheet.png")
+    r = rules()
+    art.sheet(r, path, cell=8)
+    px = imgio.read(path)
+    assert px.shape[:2] == (8 * len(r["palette"]), 32)
+    top, bottom = px[-1, 12, :3], px[0, 12, :3]
+    assert float(art.luma(top)) < float(art.luma(bottom)), "row 0 is at the bottom; the darkest swatch is on top"
 
 
 def test_asset_limits_override_the_guides_and_texture_mode_defaults_from_them():

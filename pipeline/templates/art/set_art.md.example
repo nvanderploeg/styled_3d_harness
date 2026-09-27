@@ -1,8 +1,8 @@
 # Set: Darkshire human village
 
 An example set guide for the timber-framed houses and street dressing of a Duskwood village, in the style of
-World of Warcraft's Darkshire. Copy it to `assets/_art/duskwood/human_village/set_art.md`; it refines the
-Duskwood zone guide, and the format is `pipeline/ART.md`.
+World of Warcraft's Darkshire. Copy it to `assets/_art/azeroth/duskwood/human_village/set_art.md`; it refines
+the Duskwood zone guide, and the format is `pipeline/ART.md`.
 
 ## Set
 
@@ -49,10 +49,11 @@ Each mesh zone takes the swatch of its name. The zone guide supplies `iron`, `mo
   separates it; on the frame it would merge with the timber.
 
 ```json
-{"palette": {"timber": {"color": "#3f3129", "roughness": 0.85},
-             "planks": {"color": "#664f3d", "roughness": 0.85},
-             "plaster": {"color": "#9a9286", "roughness": 0.95},
-             "stone": {"color": "#75726b", "roughness": 0.9},
+{"palette": {"timber": {"color": "#3f3129", "roughness": 0.85,
+                        "touches": ["planks", "plaster", "stone", "roof", "glow"]},
+             "planks": {"color": "#664f3d", "roughness": 0.85, "touches": ["iron", "stone"]},
+             "plaster": {"color": "#9a9286", "roughness": 0.95, "touches": ["stone", "roof", "iron"]},
+             "stone": {"color": "#75726b", "roughness": 0.9, "touches": ["roof", "iron", "earth"]},
              "roof": {"color": "#4a5266", "roughness": 0.8}}}
 ```
 

@@ -13,7 +13,7 @@ sys.path.append(asset_mod.KIT)
 
 USAGE = ("pipeline/asset <new|build|check|review|verify|status|export> <slug> [stage]\n"
          "       pipeline/asset compare <stage> <slug> <slug>... [--tolerance luma]\n"
-         "       pipeline/asset art [<slug> | <zone>[/<set>]]")
+         "       pipeline/asset art [<slug> | <world>[/<zone>[/<set>]] [--sheet <png>]]")
 
 
 def open_source(a, stage):
@@ -39,20 +39,30 @@ def build(a, stage):
     print(f"built {a.blend(stage)}")
 
 
-def show_art(target):
-    """The art chain of an asset, or of a chain named directly while its guides are being written."""
+def show_art(args):
+    """Every chain; or one asset's chain; or a chain named directly while its guides are being written."""
     import art
-    if target and os.path.exists(os.path.join(asset_mod.ASSETS, target, "asset.json")):
+    sheet = args.pop(args.index("--sheet") + 1) if "--sheet" in args else None
+    args = [x for x in args if x != "--sheet"]
+    if not args:
+        found = art.chains(asset_mod.ART)
+        print("\n".join(found) if found else f"no art guides in {asset_mod.ART} (pipeline/ART.md)")
+        return
+    target = args[0]
+    if os.path.exists(os.path.join(asset_mod.ASSETS, target, "asset.json")):
         a = Asset(target)
-        art.show(a.art_files, a.art, asset_mod.ART, a.limits)
+        files, rules, limits = a.art_files, a.art, a.limits
     else:
         files = art.chain(asset_mod.ART, target)
-        art.show(files, art.merge(files, asset_mod.LIMIT_DEFAULTS), asset_mod.ART)
+        rules, limits = art.merge(files, asset_mod.LIMIT_DEFAULTS), None
+    art.show(files, rules, asset_mod.ART, limits)
+    if sheet:
+        art.sheet(rules, os.path.abspath(sheet))
 
 
 def main(argv):
     if argv[:1] == ["art"]:
-        return show_art(argv[1] if len(argv) > 1 else "")
+        return show_art(argv[1:])
     if len(argv) < 2:
         raise SystemExit(USAGE)
     cmd, slug, *rest = argv

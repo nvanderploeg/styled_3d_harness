@@ -1,7 +1,7 @@
 # Zone: Duskwood
 
 An example zone guide for a haunted forest in the style of World of Warcraft's Duskwood. Copy it to
-`assets/_art/duskwood/zone_art.md`; it refines `world_art.md`, and the format is `pipeline/ART.md`.
+`assets/_art/azeroth/duskwood/zone_art.md`; it refines the world guide, and the format is `pipeline/ART.md`.
 
 ## Mood
 
@@ -30,9 +30,9 @@ built once, patched since, and never quite repaired.
  "palette": {"night": {"color": "#1f2436"},
              "fog": {"color": "#4a5a66"},
              "earth": {"color": "#3d3630", "roughness": 0.95},
-             "moss": {"color": "#4c5a3a", "roughness": 0.95},
-             "dead_wood": {"color": "#5b544c", "roughness": 0.9},
-             "iron": {"color": "#34363d", "roughness": 0.75},
+             "moss": {"color": "#4c5a3a", "roughness": 0.95, "touches": ["earth"]},
+             "dead_wood": {"color": "#5b544c", "roughness": 0.9, "touches": ["earth"]},
+             "iron": {"color": "#34363d", "roughness": 0.75, "touches": ["glow"]},
              "glow": {"color": "#f2b457", "roughness": 0.7, "accent": true}}}
 ```
 
@@ -62,8 +62,8 @@ built once, patched since, and never quite repaired.
 
 ## Wear
 
-- **Old and damp.** Moss gathers on tops, on north faces and where things meet the ground. Grime streaks run
-  down beneath every sill, beam and bracket.
+- **Old and damp.** Moss gathers on tops, on north faces and where things meet the ground, painted onto
+  whatever it grows on. Grime streaks run down beneath every sill, beam and bracket.
 - **Patched in the village, broken outside it.** Village damage has been mended: boards nailed across splits,
   and a replacement plank lighter than its neighbours. Outside the village, things stay broken: missing boards,
   fallen stones, open roofs.

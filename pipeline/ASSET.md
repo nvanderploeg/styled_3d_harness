@@ -27,7 +27,7 @@ and, if it passes, clears the flag. CHANGED means the stage must be rebuilt and 
 
 ## Art guides
 
-An asset's `art` field names its chain of art guides in `assets/_art/`: the world's look, its zone's mood, and
+An asset's `art` field names its chain of art guides in `assets/_art/`: its world's look, its zone's mood, and
 its set's construction and palette. Their rules feed the spec (`texture_mode`, the limits) and the build
 scripts (palette swatches, and the arguments of `painted_light`, `brush` and `make_high`). The format and merge
 rules are in [ART.md](ART.md), and `pipeline/asset art <slug>` prints an asset's chain.
@@ -47,7 +47,7 @@ every approved piece that uses it.
 |---|---|---|
 | `brief` | what the asset is, in the user's words plus any decisions | `""` |
 | `refs` | paths under `refs/`, each with what it shows | `[]` |
-| `art` | the art guide chain: `"<zone>"` or `"<zone>/<set>"` (ART.md) | none: `world_art.md` alone, when it exists |
+| `art` | the art guide chain: `"<world>"`, `"<world>/<zone>"` or `"<world>/<zone>/<set>"` (ART.md) | none: no guides |
 | `rig` | `"none"`, `"humanoid"`, or `"custom: <skeleton in words>"` | `"none"` |
 | `texture_mode` | `"stylized"` (lighting painted into albedo) or `"pbr"` (engine lights it) | the world guide's, else chosen from the refs |
 | `tri_budget` | triangle ceiling for the low mesh | `3000` |
@@ -84,7 +84,7 @@ pipeline/asset verify <slug> <stage>  rebuild into scratch space, diff against t
                                       (exit 0 = IDENTICAL and the check passes)
 pipeline/asset status <slug>          pass / FAIL / stale / not built, per stage
 pipeline/asset compare <stage> <slug>...  zone luma of each piece against the first (exit 0 = consistent)
-pipeline/asset art <slug>             the asset's art guides in reading order, its palette, and every rule in force
+pipeline/asset art [<slug> | <chain>]  every chain, or one asset's or chain's guides, palette and rules (ART.md)
 pipeline/asset export <slug>          glTF (.glb) from the latest texture stage, re-imported and verified
 ```
 
