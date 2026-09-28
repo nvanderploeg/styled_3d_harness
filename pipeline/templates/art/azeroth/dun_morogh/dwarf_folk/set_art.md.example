@@ -1,0 +1,92 @@
+# Set: Dwarf folk
+
+An example set guide for the dwarves of Dun Morogh: one body plan, dressed as miners, smiths, guards and
+brewers. Copy it to `assets/_art/azeroth/dun_morogh/dwarf_folk/set_art.md`; it refines the zone guide, and the
+format is `pipeline/ART.md`.
+
+## Set
+
+**Barrel-chested, big-handed, braided:** a body as wide as it is deep, a beard that hides the chest, and hands
+and boots built for a hammer and the snow.
+
+## Construction
+
+Every dwarf is one body built from the same proportions, then dressed. The proportions live in `kit`, in metres
+for a dwarf of `kit.height`.
+
+- **Head.** Big, about `kit.heads_tall` heads to the body. A heavy brow, a broad nose and a beard that starts at
+  the cheekbones. Ears sit just behind the beard.
+- **Torso.** A barrel chest and belly, wider than the hips, with shoulders at `kit.shoulder_width`. The neck is
+  short enough that the beard meets the chest.
+- **Beard.** One mass from cheek to `kit.beard_tip` above the ground, ending in one or two thick braids with a
+  metal clasp. It is modelled as its own shape, not painted flat on the chest.
+- **Limbs.** Short, thick legs with the hip sockets at `kit.hip_height`. Arms long for the body: the wrist falls
+  at mid-thigh when the arm hangs. Hands are oversized, `kit.hand_length` from wrist to fingertip, as a mitten
+  shape with a separate thumb.
+- **Rest pose.** T-pose facing −Y: arms straight out to the sides, level with the shoulders, palms down, legs
+  straight and apart at hip width.
+- **Clothes.** A knee-length tunic belted at the waist, leather bracers and heavy boots with a turned-up toe.
+  Every hem is a thick band that stands off the body, so it reads in silhouette.
+
+```json
+{"kit": {"height": 1.35, "heads_tall": 4.0, "shoulder_width": 0.78, "hip_width": 0.44,
+         "hip_height": 0.52, "beard_tip": 0.72, "hand_length": 0.19, "foot_length": 0.3}}
+```
+
+## Materials
+
+Each mesh zone takes the swatch of its name. The zone supplies `hearth` for anything burning.
+
+- **Skin.** Ruddy and warm, the lightest large area, so the face reads first: cheeks and nose redder, a lit
+  brow ridge and a cool shadow under it.
+- **Beard.** A rung below skin: auburn to brown, painted as a few big locks with a light edge on each, never as
+  a field of hairs.
+- **Cloth.** Ironforge blue wool, dark and muted, with big folds and a lighter band at each hem.
+- **Leather.** The darkest material: belts, bracers and boots, creased at every bend with a lit edge on each
+  crease.
+- **Iron.** Painted steel for pauldrons, clasps and buckles: a base on its swatch, dark against bright painted edges, metallic 0.
+- **Brass.** Warm trim on buckles and beard clasps; it sits on leather or iron, never on skin.
+
+```json
+{"palette": {"leather": {"color": "#43302a", "roughness": 0.85, "touches": ["cloth", "iron", "brass", "skin"]},
+             "cloth": {"color": "#3b4f78", "roughness": 0.95, "touches": ["skin", "beard", "iron"]},
+             "iron": {"color": "#6f737c", "roughness": 0.8, "touches": ["brass"]},
+             "beard": {"color": "#9c6c4a", "roughness": 0.95, "touches": ["skin", "brass"]},
+             "brass": {"color": "#c49a58", "roughness": 0.75},
+             "skin": {"color": "#d7a080", "roughness": 0.85}}}
+```
+
+## Shape
+
+- **Round the mass, square the gear.** Bodies, beards and bellies are round and soft-cornered; belts, buckles
+  and pauldrons are blocky and riveted.
+- **Wider than deep, deeper than a human.** From the front the torso is a wide barrel; from the side it is
+  still deep, with the belly pushing past the belt.
+- **Feet planted.** Boots are broad and long for the body, so the figure stands on a wide base.
+
+## Damage
+
+Where the zone's wear lands on this set:
+
+- **Leather** creases at elbows, knees and boot ankles, and scuffs lighter at the toe.
+- **Iron** chips bright on the edges of pauldrons and buckles.
+- **Cloth** frays at the hem into a few big notches, never a fringe.
+- **Faces** stay clean of wear, so they read.
+
+## Pieces
+
+| piece | budget class | what it is |
+|---|---|---|
+| `dwarf` | character | the base dwarf in tunic, belt, bracers and boots, rigged humanoid; every other dwarf starts from it |
+
+## References
+
+No images yet. Gather these beside this guide in `refs/`:
+
+- `refs/dwarf_front_side.png`: a dwarf NPC front and side, for the barrel torso, the head size and the arm
+  length.
+- `refs/dwarf_beards.png`: several beard styles, for how locks and braids are painted as big shapes.
+- `refs/dwarf_hands_boots.png`: close-ups of hands and boots, for the oversized mitten hands and turned-up toes.
+
+Sources: [80.lv, Stylized character art](https://80.lv/articles/004adk-talking-about-stylized-character-art)
+(expanded dwarf features; bold shadow values and highlights on face and muscle).

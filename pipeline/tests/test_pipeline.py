@@ -33,15 +33,15 @@ import rigging  # noqa: E402
 import verify  # noqa: E402
 import animation  # noqa: E402
 
-PLACES = {"world_art.md": "azeroth", "zone_art.md": "azeroth/duskwood",
-          "set_art.md": "azeroth/duskwood/human_village"}
-
 
 def install_examples():
     shutil.rmtree(asset_mod.ART, ignore_errors=True)
-    for name, where in PLACES.items():
-        os.makedirs(os.path.join(asset_mod.ART, where), exist_ok=True)
-        shutil.copy(os.path.join(EXAMPLES, f"{name}.example"), os.path.join(asset_mod.ART, where, name))
+    for dirpath, _, names in os.walk(EXAMPLES):
+        where = os.path.join(asset_mod.ART, os.path.relpath(dirpath, EXAMPLES))
+        for name in names:
+            if name.endswith(".example"):
+                os.makedirs(where, exist_ok=True)
+                shutil.copy(os.path.join(dirpath, name), os.path.join(where, name[:-len(".example")]))
 
 
 def new_asset(slug, **spec):

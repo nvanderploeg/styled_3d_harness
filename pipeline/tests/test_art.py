@@ -25,14 +25,16 @@ LIMITS = asset_mod.LIMIT_DEFAULTS
 WORLD = "azeroth"
 ZONE = "azeroth/duskwood"
 CHAIN = "azeroth/duskwood/human_village"
-PLACES = {"world_art.md": WORLD, "zone_art.md": ZONE, "set_art.md": CHAIN}
 
 
 def install_examples():
     shutil.rmtree(ART, ignore_errors=True)
-    for name, where in PLACES.items():
-        os.makedirs(os.path.join(ART, where), exist_ok=True)
-        shutil.copy(os.path.join(EXAMPLES, f"{name}.example"), os.path.join(ART, where, name))
+    for dirpath, _, names in os.walk(EXAMPLES):
+        where = os.path.join(ART, os.path.relpath(dirpath, EXAMPLES))
+        for name in names:
+            if name.endswith(".example"):
+                os.makedirs(where, exist_ok=True)
+                shutil.copy(os.path.join(dirpath, name), os.path.join(where, name[:-len(".example")]))
 
 
 def write_guide(where, name, *blocks):
@@ -174,7 +176,12 @@ def test_a_chain_needs_every_guide_it_names():
 def test_an_asset_follows_only_the_chain_it_names():
     assert art.chain(ART, None) == [], "no art field, no guides, however many worlds exist"
     assert new_asset("unguided_probe").art == {}
-    assert art.chains(ART) == [WORLD, ZONE, CHAIN]
+    assert art.chains(ART) == [WORLD, "azeroth/dun_morogh", "azeroth/dun_morogh/dwarf_folk", ZONE, CHAIN]
+
+
+def test_every_example_chain_merges():
+    for chain in art.chains(ART):
+        rules(chain)
 
 
 def test_the_sheet_draws_every_swatch_darkest_first():

@@ -1,0 +1,83 @@
+# Zone: Dun Morogh
+
+An example zone guide for a snowbound dwarven homeland in the style of World of Warcraft's Dun Morogh. Copy it
+to `assets/_art/azeroth/dun_morogh/zone_art.md`; it refines the world guide, and the format is `pipeline/ART.md`.
+
+## Mood
+
+**Snowbound hearth.** Bright cold snow and grey granite outside, warm firelight and ruddy faces within.
+
+## Story
+
+A high, snow-swept valley under grey crags and dark pines, with the great forge-city of Ironforge carved into
+the mountain at its heart. Dwarves here are miners, smiths and brewers: everything they make is thick, riveted,
+built to outlast a winter and patched rather than thrown away. Wolves and troll raiders keep the roads rough.
+
+## Palette and value
+
+- **High key outside, warm key inside.** Snow is the lightest large surface and sits near the top of the value
+  range. Stone and pine sit in the lower middle, so a thing reads as a dark shape against snow.
+- **Cold ground, warm people.** The land leans blue-grey and pine green. Warmth belongs to people and what they
+  make: skin, beards, leather, brass and firelight.
+- **Forge glow is the accent.** Warm orange `hearth` is the zone's one saturated colour, kept to fire, forge mouths
+  and lit windows.
+- **Granite for grey.** Neutral greys lean slightly blue, so stone never reads brown.
+
+```json
+{"limits": {"albedo_luma": [24, 225], "max_saturation": 0.6},
+ "palette": {"pine": {"color": "#2f4034", "roughness": 0.9},
+             "granite": {"color": "#6e7078", "roughness": 0.9, "touches": ["snow", "pine"]},
+             "snow": {"color": "#d8dde6", "roughness": 0.7, "touches": ["pine"]},
+             "hearth": {"color": "#f0a040", "roughness": 0.7, "accent": true}}}
+```
+
+## Light
+
+- **Clear mountain sun.** The world's key direction, near neutral, with shadows pushed blue as snow light fills
+  them.
+- **Soft wrap.** Keep the world's wrap, so round forms (bellies, beards, barrels) turn gently into shadow.
+- **Bright bases.** Snow bounces light up, so the top-down gradient is weaker than the world's: bases darken less
+  than in a fogged zone.
+
+```json
+{"painted_light": {"light": [1.02, 1.0, 1.0], "shadow": [0.55, 0.6, 0.8], "top_strength": 0.1}}
+```
+
+## Shape
+
+- **Squat and broad.** Everything sits wider than it is tall where it can: doors, anvils, tankards and people.
+  A dwarven object is about `shape.squat` times as wide, against its height, as its human counterpart.
+- **Carved and riveted.** Stone is cut in thick geometric blocks with knotwork bands, and metal is joined by big
+  rivets rather than seams.
+- **Straight builders.** Dwarven work leans less than the world allows: uprights stand true, and the hand-built
+  look comes from bowed edges and rounded corners instead.
+
+```json
+{"shape": {"squat": [1.2, 1.5], "lean_deg": [0, 1]}}
+```
+
+## Wear
+
+- **Frost and snow.** Snow caps every upward face outdoors, painted as a clean light shape with a soft blue
+  shadow at its edge. Frost greys the lower third of anything that stands in the snow.
+- **Worked, not ruined.** Leather creases and scuffs at bends, metal chips bright at edges, stone chips at
+  corners. Nothing here is rotten.
+- **Soot near fire.** Forges, hearths and the people who work them carry soot, painted as a soft dark gradient
+  upward from the source.
+
+## Motifs
+
+Knotwork bands on stone and metal. Hammers and anvils. Beer tankards and barrels. Rams and bears as heraldry.
+Braided beards with metal clasps. Runes cut into stone.
+
+## References
+
+No images yet. Gather these beside this guide in `refs/`:
+
+- `refs/kharanos.png`: the village of Kharanos in snow, for the value key of dark buildings against snow and the
+  warm lit windows.
+- `refs/ironforge_gate.png`: the gate of Ironforge, for the carved block stone and knotwork.
+- `refs/dwarf_npcs.png`: a lineup of dwarf NPCs, for how warm skin and beards sit against the cold land.
+
+Sources: [Warcraft Wiki, Dun Morogh](https://warcraft.wiki.gg/wiki/Dun_Morogh) (snow, pines, grey crags,
+Ironforge in the mountain).

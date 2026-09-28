@@ -37,7 +37,8 @@ pipeline/asset export crate      # assets/crate/export/crate.glb
 
 Assets that must look like one game follow a chain of art guides in `assets/_art/`: the world's look, a zone's
 mood, and a set's construction and palette. [pipeline/ART.md](pipeline/ART.md) defines the format, and
-`pipeline/templates/art/` holds a worked example in the style of World of Warcraft's Duskwood.
+`pipeline/templates/art/azeroth/` holds worked examples in the style of World of Warcraft: Duskwood's human
+village and Dun Morogh's dwarves.
 
 ```
 pipeline/asset art                                    # every chain

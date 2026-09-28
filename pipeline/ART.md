@@ -34,9 +34,9 @@ pipeline/asset art <chain> [--sheet <png>]    the same for a chain; the sheet dr
                                               as shadow, base and lit under the chain's light, then as grey
 ```
 
-Worked examples in the style of World of Warcraft live in `pipeline/templates/art/`: `world_art.md.example`,
-`zone_art.md.example` (Duskwood) and `set_art.md.example` (Darkshire's human village). Each names the path it
-belongs at under `assets/_art/azeroth/`.
+Worked examples in the style of World of Warcraft live in `pipeline/templates/art/azeroth/`, laid out as
+`assets/_art/azeroth/` is: the world guide, Duskwood with Darkshire's human village, and Dun Morogh with its
+dwarf folk. Copy a file to the same path under `assets/_art/` and drop `.example`.
 
 ## Format
 
