@@ -8,6 +8,7 @@ import numpy as np
 from mathutils.bvhtree import BVHTree
 from mathutils.kdtree import KDTree
 
+import animation
 import art
 import uvmath
 
@@ -38,10 +39,12 @@ def run(a, stage):
             rig_checks(a, r)
         if stage.startswith("texture"):
             texture_checks(a, r, stage)
+        if stage == "animate":
+            animate_checks(a, r)
 
     ok = not r.fails
     built = os.path.getmtime(a.blend(stage))
-    rep = {"stage": stage, "pass": ok, "built": built, "spec": a.fingerprint(),
+    rep = {"stage": stage, "pass": ok, "built": built, "spec": a.fingerprint(stage),
            "fail": r.fails, "warn": r.warns, "metrics": r.metrics}
     prev = a.report(stage)
     if prev and prev.get("built") == built and "verified" in prev:
@@ -350,3 +353,88 @@ def neighbours(obj, gap=0.002):
                                                  for v in corners[i]):
                 pairs.add((i, j))
     return sorted(tuple(sorted((names[i], names[j]))) for i, j in pairs)
+
+
+ROT_TOL, LOC_TOL = math.radians(0.5), 0.001
+
+
+def animate_checks(a, r):
+    """Every clip in the spec's animations: its action exists and spans frames 1 to `frames`; it turns bones
+    and moves only unconnected ones; a `loop` ends where it starts; `from` and `to` meet their clips'
+    ends; `planted` bones stay within max_slide of where the clip starts them; the mesh stays above
+    the ground."""
+    arm, obj = a.armature, a.mesh
+    if not r.require(arm is not None, f"no armature named '{a.slug}_rig'"):
+        return
+    s = animation.settings(a)
+    clips = s["clips"]
+    acts = {n: bpy.data.actions.get(n) for n in clips}
+    for name, c in clips.items():
+        act = acts[name]
+        if not r.require(act is not None, f"clip '{name}' has no action — build it with animation.clip"):
+            continue
+        f0, f1 = (int(round(f)) for f in act.frame_range)
+        r.require(f0 == 1 and f1 == c["frames"], f"clip '{name}' spans frames {f0}–{f1}, expected 1–{c['frames']}")
+        for fc in act.fcurves:
+            bone, _, prop = fc.data_path.partition('"].')
+            bone = bone.removeprefix('pose.bones["')
+            b = arm.data.bones.get(bone)
+            if not r.require(b is not None, f"clip '{name}' keys '{fc.data_path}', which is not a bone channel"):
+                continue
+            r.require(prop != "scale", f"clip '{name}' scales {bone} — engines retarget rotation and root motion only")
+            r.require(prop != "location" or not b.use_connect,
+                      f"clip '{name}' moves {bone}, which is connected to its parent — turn it instead")
+    for name, c in clips.items():
+        act = acts[name]
+        if act is None:
+            continue
+        if c.get("loop"):
+            gap = _pose_gap(act, 1, act, c["frames"])
+            r.require(not gap, f"loop '{name}' ends away from its start: {gap}")
+        for key, mine, theirs in (("from", 1, "last"), ("to", c["frames"], "first")):
+            other = c.get(key)
+            if other is None:
+                continue
+            if not r.require(acts.get(other) is not None, f"clip '{name}' has {key} '{other}', which is not a clip"):
+                continue
+            frame = clips[other]["frames"] if theirs == "last" else 1
+            gap = _pose_gap(act, mine, acts[other], frame)
+            r.require(not gap, f"clip '{name}' {'starts' if key == 'from' else 'ends'} away from the {theirs} frame "
+                               f"of '{other}': {gap}")
+    arm.animation_data_create()
+    slides, lows = {}, {}
+    dg = bpy.context.evaluated_depsgraph_get()
+    for name, c in clips.items():
+        act = acts[name]
+        if act is None:
+            continue
+        arm.animation_data.action = act
+        start, slide, low = {}, 0.0, float("inf")
+        for f in range(1, c["frames"] + 1):
+            bpy.context.scene.frame_set(f)
+            for bone in c.get("planted", []):
+                p = arm.pose.bones[bone].head.copy()
+                slide = max(slide, (p - start.setdefault(bone, p)).length)
+            if f % 5 == 1 or f == c["frames"]:
+                ev = obj.evaluated_get(dg)
+                low = min(low, min(v.co.z for v in ev.data.vertices))
+        slides[name], lows[name] = round(slide, 4), round(low, 4)
+        r.require(slide <= s["max_slide"], f"clip '{name}' slides a planted bone {slide * 100:.1f} cm "
+                                           f"(max_slide {s['max_slide'] * 100:.1f} cm) — plant it on every key")
+        r.require(low >= -LOC_TOL * 10, f"clip '{name}' sinks the mesh {-low * 100:.1f} cm below the ground")
+    arm.animation_data.action = None
+    bpy.context.scene.frame_set(1)
+    r.metrics.update(clips={n: c["frames"] for n, c in clips.items()}, planted_slide_m=slides, lowest_z_m=lows)
+
+
+def _pose_gap(a1, f1, a2, f2):
+    """The channels where a1 at frame f1 and a2 at frame f2 differ, worst first; [] when they match."""
+    p, q = animation.pose_at(a1, f1), animation.pose_at(a2, f2)
+    gaps = []
+    for k in set(p) | set(q):
+        d = abs(p.get(k, 0.0) - q.get(k, 0.0))
+        rot = k[0].endswith("rotation_euler")
+        if d > (ROT_TOL if rot else LOC_TOL):
+            gaps.append((d, f"{k[0].removeprefix('pose.bones[').split(']')[0]}"
+                            f"[{k[1]}] {math.degrees(d) if rot else d * 100:.1f}{'°' if rot else ' cm'}"))
+    return [g for _, g in sorted(gaps, reverse=True)[:4]]

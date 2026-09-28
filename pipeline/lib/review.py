@@ -20,6 +20,7 @@ VIEWS = {
     "top": ((0, 0, 1), True),
     "three_quarter": ((1, -1, 0.7), False),
     "three_quarter_back": ((-1, 1, 0.7), False),
+    "front_right_low": ((1, -0.55, 0.3), False),
 }
 SHEETS = {
     "model": ["front", "right", "back", "left", "top", "three_quarter", "three_quarter_back", "high"],
@@ -50,6 +51,12 @@ def run(a, stage):
     elif stage == "rig":
         tiles, frames = rig_tiles(a, scene, cam)
         print(f"review: {out}  (three-quarter view at rig_test frames {frames})")
+    elif stage == "animate":
+        tiles, rows = animate_tiles(a, scene, cam)
+        save_sheet(tiles, out)
+        print(f"review: {out}  (one row per clip, from the front right: "
+              f"{'; '.join(f'{n} frames {fs}' for n, fs in rows)})")
+        return
     else:
         tiles = texture_tiles(a, stage, scene, cam)
         print(f"review: {out}  (tiles: {', '.join(SHEETS['texture'])})")
@@ -87,6 +94,15 @@ def bounds(objs):
         pts += [ev.matrix_world @ Vector(c) for c in ev.bound_box]
     return (Vector([min(p[i] for p in pts) for i in range(3)]),
             Vector([max(p[i] for p in pts) for i in range(3)]))
+
+
+def posed_bounds(obj):
+    """Bounds of obj's deformed vertices at the current frame."""
+    me = obj.evaluated_get(bpy.context.evaluated_depsgraph_get()).data
+    co = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    return Vector(co.min(axis=0)), Vector(co.max(axis=0))
 
 
 def look(cam, d):
@@ -215,6 +231,47 @@ def rig_tiles(a, scene, cam):
         aim(cam, lo, hi, "three_quarter", pad=1.0)
         tiles.append(render(scene))
     return tiles, frames
+
+
+def animate_tiles(a, scene, cam, per_clip=4):
+    """Per clip, a row of per_clip frames from its first to its last, all framed alike, with the spec's
+    props in grey. Textured by the latest texture stage."""
+    import animation
+    arm, obj = a.armature, a.mesh
+    tex = a.latest("texture")
+    if tex:
+        obj.data.materials.clear()
+        obj.data.materials.append(material.baked(a, tex))
+        eevee(scene)
+    else:
+        workbench(scene)
+    grey = bpy.data.materials.new("prop")
+    grey.diffuse_color = (0.35, 0.35, 0.37, 1)
+    grey.use_nodes = True
+    grey.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = grey.diffuse_color
+    boxes = animation.props(a)
+    for b in boxes:
+        b.data.materials.append(grey)
+    arm.animation_data_create()
+    rows = []
+    for name, c in animation.settings(a)["clips"].items():
+        rows.append((name, sorted({int(round(f)) for f in np.linspace(1, c["frames"], per_clip)})))
+    lo, hi = bounds(boxes) if boxes else (None, None)
+    for name, frames in rows:
+        arm.animation_data.action = bpy.data.actions[name]
+        for f in frames:
+            scene.frame_set(f)
+            l, h = posed_bounds(obj)
+            lo, hi = (l, h) if lo is None else (Vector(map(min, lo, l)), Vector(map(max, hi, h)))
+    tiles = []
+    for name, frames in rows:
+        arm.animation_data.action = bpy.data.actions[name]
+        for f in frames:
+            scene.frame_set(f)
+            aim(cam, lo, hi, "front_right_low")
+            tiles.append(render(scene))
+        tiles += [blank()] * (per_clip - len(frames))
+    return tiles, rows
 
 
 def texture_tiles(a, stage, scene, cam):

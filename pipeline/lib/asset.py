@@ -12,7 +12,7 @@ ASSETS = os.environ.get("ASSETS_DIR") or os.path.join(REPO, "assets")
 KIT = os.path.join(ASSETS, "_kit")
 ART = os.path.join(ASSETS, "_art")
 
-STAGES = ("model", "rig", "texture_base", "texture_ref")
+STAGES = ("model", "rig", "texture_base", "texture_ref", "animate")
 
 SPEC_DEFAULTS = {
     "brief": "",
@@ -87,10 +87,12 @@ class Asset:
     def texture(self, stage, name):
         return os.path.join(self.textures(stage), f"{self.slug}_{name}.png")
 
-    def fingerprint(self):
-        """Hash of what a build or check reads: spec fields, limits in force and art rules.
-        brief, refs and shots are notes, not inputs; budget_class counts through the values it supplies."""
-        inputs = {k: v for k, v in self.spec.items() if k not in ("brief", "refs", "shots", "slug", "budget_class")}
+    def fingerprint(self, stage=None):
+        """Hash of what a build or check of stage reads: spec fields, limits in force and art rules.
+        brief, refs and shots are notes, not inputs; budget_class counts through the values it supplies;
+        animations are read by the animate stage alone."""
+        notes = ("brief", "refs", "shots", "slug", "budget_class") + (() if stage == "animate" else ("animations",))
+        inputs = {k: v for k, v in self.spec.items() if k not in notes}
         inputs["limits"] = self.limits
         if self.art:
             inputs["art"] = self.art
@@ -121,8 +123,12 @@ class Asset:
     def rigged(self):
         return self.spec["rig"] != "none"
 
+    @property
+    def animated(self):
+        return self.rigged and bool((self.spec.get("animations") or {}).get("clips"))
+
     def stages(self):
-        return [s for s in STAGES if s != "rig" or self.rigged]
+        return [s for s in STAGES if (s != "rig" or self.rigged) and (s != "animate" or self.animated)]
 
     def upstream(self, stage):
         order = self.stages()
@@ -225,7 +231,7 @@ def status(a):
             since = max(mtime, rep.get("verified", 0.0))
             kit = [os.path.basename(m) for m in kit_modules(script) if os.path.getmtime(m) > since]
             changed = [f"_kit ({', '.join(kit)})"] if kit else []
-            if rep.get("spec") != a.fingerprint():
+            if rep.get("spec") != a.fingerprint(s):
                 changed.append("spec")
             if changed:
                 state += f" — {' and '.join(changed)} changed since; run: pipeline/asset verify {a.slug} {s}"

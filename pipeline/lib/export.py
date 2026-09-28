@@ -3,6 +3,7 @@ import shutil
 
 import bpy
 
+import animation
 import bake
 import material
 
@@ -11,12 +12,18 @@ def export(a):
     tex = a.latest("texture")
     if tex is None:
         raise SystemExit("nothing to export — no texture stage is built")
-    for s in a.stages()[: a.stages().index(tex) + 1]:
+    last = "animate" if a.animated else tex
+    for s in a.stages()[: a.stages().index(last) + 1]:
         rep = a.report(s)
-        if not rep or not rep["pass"] or rep.get("built") != os.path.getmtime(a.blend(s)):
+        if not os.path.exists(a.blend(s)) or not rep or not rep["pass"] \
+                or rep.get("built") != os.path.getmtime(a.blend(s)):
             raise SystemExit(f"stage '{s}' has not passed its check — run: pipeline/asset build {a.slug} {s}")
 
-    bpy.ops.wm.open_mainfile(filepath=a.blend(tex))
+    bpy.ops.wm.open_mainfile(filepath=a.blend(last))
+    clips = list(animation.settings(a)["clips"]) if a.animated else []
+    for act in list(bpy.data.actions):
+        if act.name not in clips:
+            bpy.data.actions.remove(act)
     obj, arm = a.mesh, a.armature
     if a.high:
         bpy.data.objects.remove(a.high)
@@ -35,21 +42,22 @@ def export(a):
         o.select_set(o in (obj, arm))
     bpy.ops.export_scene.gltf(
         filepath=glb, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
-        export_animations=False, export_def_bones=False, export_tangents=True, export_image_format="AUTO",
+        export_animations=bool(clips), export_animation_mode="ACTIONS", export_force_sampling=True,
+        export_def_bones=False, export_tangents=True, export_image_format="AUTO",
     )
     tex_out = os.path.join(out_dir, "textures")
     os.makedirs(tex_out, exist_ok=True)
     for f in os.listdir(a.textures(tex)):
         shutil.copy2(os.path.join(a.textures(tex), f), tex_out)
 
-    ok = verify(a, glb)
+    ok = verify(a, glb, clips)
     print(f"export {glb}: {'PASS' if ok else 'FAIL'}")
     if not ok:
         os.remove(glb)
         raise SystemExit("exported file failed verification and was removed")
 
 
-def verify(a, glb):
+def verify(a, glb, clips=()):
     """Re-import the file into an empty scene and confirm what an engine will see."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=glb)
@@ -76,6 +84,11 @@ def verify(a, glb):
             fails.append("mesh is not skinned to the armature")
         else:
             print(f"  bones: {len(arms[0].data.bones)}")
+    found = sorted(act.name for act in bpy.data.actions)
+    if clips or found:
+        print(f"  animations: {found}")
+    if sorted(clips) != found:
+        fails.append(f"animations {found}, expected {sorted(clips)}")
     print(f"  size: {os.path.getsize(glb) / 1e6:.2f} MB")
     for f in fails:
         print(f"FAIL {f}")

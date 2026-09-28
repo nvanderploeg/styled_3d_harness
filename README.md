@@ -4,11 +4,12 @@ Claude Code skills that make game-ready 3D assets in Blender, from a brief and r
 
 | skill | invoked | does |
 |---|---|---|
-| `/make-asset` | by you | runs the whole pipeline for one asset, one stage agent at a time, gating each stage |
+| `make-asset` | by Claude or you | runs the whole pipeline for one asset, one stage agent at a time, gating each stage |
 | `model-asset` | by Claude or you | low-poly mesh with clean quad topology, zones and UVs |
 | `rig-asset` | by Claude or you | deform skeleton, skin weights and a `rig_test` action |
 | `texture-base` | by Claude or you | flat material per zone, baked with AO |
 | `texture-from-reference` | by Claude or you | stylized (painted light) or PBR maps matched to references |
+| `animate-asset` | by Claude or you | clips for a rigged asset (sits, idles, emotes), exported in its glTF |
 | `art-guide` | by Claude or you | the world, zone or set art guide that assets of one game follow |
 
 Every stage is a Blender build script under `assets/<slug>/build/`. `pipeline/asset build` runs it, checks the result

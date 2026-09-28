@@ -18,7 +18,8 @@ assets/<slug>/
   export/<slug>.glb      the deliverable, plus export/textures/
 ```
 
-Stages run in order `model → rig → texture_base → texture_ref`. `rig` is skipped when `rig` is `"none"`.
+Stages run in order `model → rig → texture_base → texture_ref → animate`. `rig` is skipped when `rig` is `"none"`,
+and `animate` runs only on a rigged asset whose `animations` name clips.
 Each build opens the nearest upstream stage's `.blend`, runs `build/<stage>.py`, and saves `<stage>.blend`.
 Rebuilding a stage makes every later stage stale. `status` shows this; rebuild the stale stages in order.
 When a `_kit` module the stage's build script imports (directly or through other kit modules) or the spec
@@ -57,6 +58,7 @@ every approved piece that uses it.
 | `height_m` | real-world height in metres (Z extent) | none |
 | `shots` | extra review cameras: `{"name", "target": [x,y,z], "from": [dx,dy,dz], "distance": m, "lens": mm}` | `[]` |
 | `limits` | overrides for check thresholds, each set deliberately and named in `brief` | `{}` |
+| `animations` | the clips the `animate` stage keys (*Animations*) | none |
 
 Budget guide, when the world guide has no `budgets`: small prop 300–1.5k tris at 512–1k, hero prop 1.5k–5k at
 1k–2k, character 5k–20k at 2k.
@@ -69,6 +71,30 @@ zone's mean albedo luma), `max_saturation` none (for each zone's mean albedo), `
 `max_bones` 80. The art guides set defaults over these, the budget class's `limits` replace them, and
 `asset.json` overrides all three. `albedo_luma` and `max_saturation` skip accent swatches. All three zone
 limits FAIL at `texture_ref` and WARN at `texture_base`.
+
+## Animations
+
+```json
+"animations": {
+  "fps": 30, "max_slide": 0.01,
+  "props": {"seat": {"size": [0.5, 0.45, 0.35], "at": [0, 0.3, 0]}},
+  "clips": [
+    {"name": "sit_down", "frames": 40, "to": "sit_idle", "planted": ["foot.L", "foot.R"], "brief": "..."},
+    {"name": "sit_idle", "frames": 120, "loop": true, "planted": ["foot.L", "foot.R"], "brief": "..."}
+  ]
+}
+```
+
+- **Clips** run from frame 1 to `frames` at `fps` (default 30). The export carries every clip, by name, and no
+  other action.
+- **Hand-offs.** `loop` ends a clip on its first pose. `from: X` starts it on X's last pose and `to: X` ends it on
+  X's first pose, so the engine can cut between them without a pop.
+- **Planted** bones hold still in world space for the whole clip, within `max_slide` metres (default 0.01).
+  `animation.clip` re-solves each planted foot's leg on every frame.
+- **Props** are stand-in boxes, `at` their bottom centre, drawn in the review so contact can be judged: a seat,
+  a table edge, a door handle. They are not exported.
+- The check also fails a clip that scales a bone, moves a connected bone, or takes the mesh below the ground.
+  Only the `animate` stage reads `animations`, so editing it leaves the other stages' specs unchanged.
 
 ## Scene conventions
 
@@ -89,7 +115,8 @@ pipeline/asset verify <slug> <stage>  rebuild into scratch space, diff against t
 pipeline/asset status <slug>          pass / FAIL / stale / not built, per stage
 pipeline/asset compare <stage> <slug>...  zone luma of each piece against the first (exit 0 = consistent)
 pipeline/asset art [<slug> | <chain>]  every chain, or one asset's or chain's guides, palette and rules (ART.md)
-pipeline/asset export <slug>          glTF (.glb) from the latest texture stage, re-imported and verified
+pipeline/asset export <slug>          glTF (.glb) from the latest texture stage, with the animate stage's clips
+                                      when there is one, re-imported and verified
 ```
 
 `$BLENDER` overrides the Blender binary (default `~/opt/blender/blender`, 4.5 LTS). `$ASSETS_DIR` overrides `assets/`.
@@ -103,7 +130,8 @@ ones a stage uses:
 
 - `modeling`: `lathe`, `mesh_object`, `quadify`, `footprint_outline`, `zone`, `finalize`, `sharpen`, `unwrap`,
   `make_high`
-- `rigging`: `section`, `build`, `bind`, `clean`, `rigid`, `test_action`
+- `rigging`: `section`, `build`, `bind`, `clean`, `rigid`, `chain`, `test_action`
+- `animation`: `clip`, `plant`, `apply`, `current`, `pose_at`, `props`, `settings`
 - `nodes`: `tree(mat)` for shader-node shorthand, plus `srgb` for picking colours by eye. Its stylized patterns
   are `slabs`, `courses`, `cracks`, `by_facing`, `brush` and `painted_light`, built from `band`, `warp` and
   `cell_random`
@@ -116,6 +144,7 @@ Tiles read left to right, top to bottom.
 
 - `model`: front, right, back, left, top, three-quarter, three-quarter back, high mesh. Zones are coloured and the wireframe is overlaid. `model_uv.png`: grey islands, red overlap.
 - `rig`: three-quarter view across the frames of the `rig_test` action.
+- `animate`: one row per clip, four frames from first to last, seen from the front right with the props in grey.
 - `texture_*`: lit by an HDRI, in the order front, right, back, left, top, three-quarter, three-quarter back, then unlit albedo.
 - The top tile looks straight down with +Y (the back) at the top of the image.
 - `<stage>_shots.png`: one tile per shot. Texture stages give two per shot, lit then unlit. Sheet tiles run

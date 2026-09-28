@@ -5,7 +5,7 @@ description: Make a game-ready 3D asset end to end, from art guides and spec thr
 
 # Make Asset
 
-You are the **orchestrator**. The **requester** is whoever asked for the asset: the user, or an agent that invoked this skill. You hold the spec, dispatch each stage to a fresh agent, and judge its result yourself before the next stage starts. The stages' own skills do the work: `model-asset`, `rig-asset`, `texture-base` and `texture-from-reference`. Read `pipeline/ASSET.md` first; it defines the asset folder, the stage order and the commands. Then read `pipeline/ART.md`, which defines the art guides every stage follows.
+You are the **orchestrator**. The **requester** is whoever asked for the asset: the user, or an agent that invoked this skill. You hold the spec, dispatch each stage to a fresh agent, and judge its result yourself before the next stage starts. The stages' own skills do the work: `model-asset`, `rig-asset`, `texture-base`, `texture-from-reference` and `animate-asset`. Read `pipeline/ASSET.md` first; it defines the asset folder, the stage order and the commands. Then read `pipeline/ART.md`, which defines the art guides every stage follows.
 
 ## 1. Guides
 
@@ -17,7 +17,7 @@ Done when `pipeline/asset art <chain>` accepts the chain, and you have posted ea
 
 Run `pipeline/asset new <slug>`, copy any reference images into `refs/`, and write `asset.json` from the request with `art` set to the chain. Take what the request says. Set `budget_class` to the class in `pipeline/asset art <slug>` that fits the asset; it supplies `tri_budget`, `texture_size` and the class's `limits`. When the guides have no budgets, fill those from ASSET.md's defaults and budget guide.
 
-Ask the requester only about a field that neither the request nor a default can settle: most often whether it needs a rig, what it's for, and its size in the requester's engine. Offer each interpretation as a concrete option with an ASCII plan preview and units. A bare size like "1x2" hides which axis is which, and which piece it applies to. When you can't ask (you run inside an agent with no way to reach the requester), take the reading the request points to and carry it to the report as a judgement call. Post the finished spec as a short block (brief, art chain, rig, texture mode, tri budget, texture size, height), with a plan diagram for anything directional, and continue.
+Ask the requester only about a field that neither the request nor a default can settle: most often whether it needs a rig, what it's for, and its size in the requester's engine. Offer each interpretation as a concrete option with an ASCII plan preview and units. A bare size like "1x2" hides which axis is which, and which piece it applies to. When you can't ask (you run inside an agent with no way to reach the requester), take the reading the request points to and carry it to the report as a judgement call. When the request asks for motion, name its clips in `animations` (ASSET.md, *Animations*); the `animate` stage then follows the textures. Post the finished spec as a short block (brief, art chain, rig, texture mode, tri budget, texture size, height, clips), with a plan diagram for anything directional, and continue.
 
 ## 3. Run the stages
 

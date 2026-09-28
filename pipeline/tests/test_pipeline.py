@@ -4,6 +4,7 @@
 import contextlib
 import io
 import json
+import math
 import os
 import shutil
 import sys
@@ -27,6 +28,7 @@ import imgio  # noqa: E402
 import nodes  # noqa: E402
 import review  # noqa: E402
 import rigging  # noqa: E402
+import animation  # noqa: E402
 
 PLACES = {"world_art.md": "azeroth", "zone_art.md": "azeroth/duskwood",
           "set_art.md": "azeroth/duskwood/human_village"}
@@ -234,6 +236,98 @@ def test_a_chain_blends_a_hanging_part_from_its_parent_to_its_tip():
         assert len(w) <= 2 and abs(sum(w.values()) - 1) < 1e-3, w
     mid = [weights(v) for v in beard_verts if abs(v.co.z - 0.8) < 1e-3]
     assert mid and all(w == {"beard_1": 0.5, "beard_2": 0.5} for w in mid), mid
+
+
+
+# --- animation
+
+LEGS = {"clips": [], "props": {}}
+
+
+def biped(**animations):
+    """A box biped on hips, thighs, shins and feet, with animations as its spec's `animations`."""
+    clear_scene()
+    a = new_asset("walker", rig="humanoid", animations=animations)
+    parts = {"hips": ((-0.15, -0.1, 0.5), (0.15, 0.1, 0.9))}
+    for side, x in (("L", 0.1), ("R", -0.1)):
+        parts[f"thigh.{side}"] = ((x - 0.05, -0.06, 0.29), (x + 0.05, 0.04, 0.5))
+        parts[f"shin.{side}"] = ((x - 0.05, -0.06, 0.07), (x + 0.05, 0.04, 0.28))
+        parts[f"foot.{side}"] = ((x - 0.05, -0.16, 0.0), (x + 0.05, 0.04, 0.06))
+    mesh_object("walker", {"body": list(parts.values())})
+    rigging.build(a, [
+        {"name": "root", "head": (0, 0, 0), "tail": (0, 0, 0.1), "deform": False},
+        {"name": "hips", "head": (0, 0, 0.5), "tail": (0, 0, 0.7), "parent": "root"},
+        {"name": "thigh.L", "head": (0.1, 0, 0.5), "tail": (0.1, -0.02, 0.28), "parent": "hips"},
+        {"name": "shin.L", "head": (0.1, -0.02, 0.28), "tail": (0.1, 0, 0.06), "parent": "thigh.L"},
+        {"name": "foot.L", "head": (0.1, 0, 0.06), "tail": (0.1, -0.14, 0.02), "parent": "shin.L"},
+    ])
+    obj = a.mesh
+    obj.modifiers.new("rig", "ARMATURE").object = a.armature
+    for bone, (lo, hi) in parts.items():
+        rigging.rigid(a, bone, lambda co, lo=lo, hi=hi: all(lo[i] - 1e-4 <= co[i] <= hi[i] + 1e-4 for i in range(3)))
+    return a
+
+
+def animate_report(a):
+    r = checks.Report()
+    checks.animate_checks(a, r)
+    return r
+
+
+SQUAT = {"hips": {"rot": (0, 0, 0), "loc": (0, -0.12, 0)}}   # an upright hips bone's local Y is world Z
+FEET = ["foot.L", "foot.R"]
+
+
+def test_a_planted_clip_holds_its_feet_while_the_hips_drop():
+    a = biped(clips=[{"name": "squat", "frames": 20, "loop": True, "planted": FEET}])
+    animation.clip(a, "squat", [(1, {}), (10, SQUAT), (20, {})])
+    r = animate_report(a)
+    assert not r.fails, r.fails
+    assert r.metrics["planted_slide_m"]["squat"] <= 0.001, r.metrics
+    a.armature.animation_data.action = bpy.data.actions["squat"]
+    bpy.context.scene.frame_set(10)
+    assert a.armature.pose.bones["hips"].head.z < 0.4, "the hips never dropped"
+
+
+def test_a_planted_clip_keys_its_first_frame_from_its_first_pose():
+    # The last key pre-bends the knees, as a deep sit does to steer the solve; frame 1 must not inherit them.
+    a = biped(clips=[{"name": "sit", "frames": 20, "planted": FEET}])
+    bent = {**SQUAT, "thigh.L": (-40, 0, 0), "shin.L": (60, 0, 0), "thigh.R": (-40, 0, 0), "shin.R": (60, 0, 0)}
+    animation.clip(a, "sit", [(1, {}), (20, bent)])
+    r = animate_report(a)
+    assert not r.fails, r.fails
+    act = bpy.data.actions["sit"]
+    thigh = act.fcurves.find('pose.bones["thigh.L"].rotation_euler', index=0)
+    assert abs(thigh.evaluate(1)) < 1e-3, f"frame 1 thigh keyed at {math.degrees(thigh.evaluate(1)):.1f}°"
+
+
+def test_the_check_holds_planted_feet_loops_and_hand_offs():
+    a = biped(clips=[{"name": "sink", "frames": 20, "loop": True, "to": "rise"}, {"name": "rise", "frames": 10}])
+    animation.clip(a, "sink", [(1, {}), (20, SQUAT)])
+    a.spec["animations"]["clips"][0]["planted"] = FEET   # keyed before its feet were planted
+    animation.clip(a, "rise", [(1, {"hips": (10, 0, 0)}), (10, {})])
+    bpy.data.actions["sink"].fcurves.find('pose.bones["hips"].scale', index=0) or \
+        bpy.data.actions["sink"].fcurves.new('pose.bones["hips"].scale', index=0).keyframe_points.insert(1, 1.0)
+    fails = "\n".join(animate_report(a).fails)
+    assert "slides a planted bone" in fails and "below the ground" in fails, fails
+    assert "loop 'sink' ends away from its start" in fails, fails
+    assert "ends away from the first frame of 'rise'" in fails, fails
+    assert "scales hips" in fails, fails
+
+
+def test_only_a_rigged_asset_with_clips_has_an_animate_stage():
+    clip = {"clips": [{"name": "idle", "frames": 30, "loop": True}]}
+    assert "animate" in new_asset("a1", rig="humanoid", animations=clip).stages()
+    assert "animate" not in new_asset("a2", rig="humanoid").stages()
+    assert "animate" not in new_asset("a3", animations=clip).stages()
+
+
+def test_clips_change_only_the_animate_stage_fingerprint():
+    before = new_asset("a1", rig="humanoid")
+    after = new_asset("a1", rig="humanoid", animations={"clips": [{"name": "idle", "frames": 30}]})
+    assert after.fingerprint("rig") == before.fingerprint("rig")
+    assert after.fingerprint("texture_ref") == before.fingerprint("texture_ref")
+    assert after.fingerprint("animate") != before.fingerprint("animate")
 
 
 # --- review sheets
