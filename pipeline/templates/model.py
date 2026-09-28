@@ -10,6 +10,7 @@ H = asset.spec["height_m"] or 1.0
 # One block per part: build it from quads, then put every face in a zone.
 body = m.lathe("body", [(0.3 * H, 0.0), (0.32 * H, 0.5 * H), (0.3 * H, H)], segments=24)
 m.zone(body, "main")
+# m.head(head)  # with a head_tri_budget: the head's faces, budgeted apart from the body
 
 # Primitives work too; keep their quads and apply nothing by hand — finalize applies modifiers.
 # bpy.ops.mesh.primitive_cube_add(size=0.2, location=(0, 0, H + 0.1))

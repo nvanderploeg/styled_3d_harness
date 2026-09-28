@@ -2,12 +2,14 @@ import math
 import os
 import tempfile
 
+import bmesh
 import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
 import imgio
 import material
+import rigging
 import uvmath
 
 TILE = 512
@@ -182,8 +184,10 @@ def workbench(scene, color_type="MATERIAL", light="STUDIO"):
 
 
 def wire_overlay(a, obj):
-    """A dark wireframe twin of obj that follows its modifiers, so topology reads over the shading."""
+    """A dark wireframe twin of obj that follows its modifiers, so topology reads over the shading. Lines thin
+    where edges are short, so a dense face stays visible between them."""
     wire = obj.copy()
+    wire.data = obj.data.copy()
     wire.name = f"{obj.name}_wire"
     bpy.context.scene.collection.objects.link(wire)
     dark = bpy.data.materials.new("wire")
@@ -191,8 +195,25 @@ def wire_overlay(a, obj):
     for slot in wire.material_slots:
         slot.link = "OBJECT"
         slot.material = dark
+    me = wire.data
+    ends = np.empty(len(me.edges) * 2, np.int32)
+    me.edges.foreach_get("vertices", ends)
+    ends = ends.reshape(-1, 2)
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    lengths = np.linalg.norm(co[ends[:, 0]] - co[ends[:, 1]], axis=1)
+    total = np.bincount(ends.ravel(), np.repeat(lengths, 2), len(co))
+    count = np.maximum(np.bincount(ends.ravel(), minlength=len(co)), 1)
+    thickness = 0.0025 * a.size()
+    scale = np.clip(0.12 * total / count / thickness, 0.1, 1.0)
+    group = wire.vertex_groups.new(name="wire_scale")
+    for i, w in enumerate(scale):
+        group.add([i], float(w), "REPLACE")
     mod = wire.modifiers.new("wire", "WIREFRAME")
-    mod.thickness = 0.0025 * a.size()
+    mod.thickness = thickness
+    mod.vertex_group = group.name
+    mod.thickness_vertex_group = 0.0
     mod.use_even_offset = True
     mod.use_replace = True
     mod.offset = 1
@@ -218,6 +239,44 @@ def model_tiles(a, scene, cam):
     return tiles
 
 
+AXES = ((1, 0, 0, 1), (0, 0.8, 0, 1), (0.1, 0.3, 1, 1))
+
+
+def socket_markers(a):
+    """An axis tripod at each attachment point, riding its bone and drawn over the mesh: X red, Y (along
+    the bone) green, Z blue."""
+    arm = a.armature
+    size = 0.06 * a.size()
+    out = []
+    for name in (n for n in rigging.SOCKETS if n in arm.data.bones):
+        me = bpy.data.meshes.new(f"marker_{name}")
+        bm = bmesh.new()
+        for axis, color in enumerate(AXES):
+            me.materials.append(_flat(f"marker_axis_{axis}", color))
+            lo, hi = [-0.06 * size] * 3, [0.06 * size] * 3
+            hi[axis] = size
+            cube = bmesh.ops.create_cube(bm, size=1.0)["verts"]
+            for v in cube:
+                v.co = [lo[i] if v.co[i] < 0 else hi[i] for i in range(3)]
+            for f in {f for v in cube for f in v.link_faces}:
+                f.material_index = axis
+        bm.to_mesh(me)
+        bm.free()
+        obj = bpy.data.objects.new(me.name, me)
+        bpy.context.scene.collection.objects.link(obj)
+        obj.parent, obj.parent_type, obj.parent_bone = arm, "BONE", name
+        obj.location = (0, -arm.data.bones[name].length, 0)
+        obj.show_in_front = True
+        out.append(obj)
+    return out
+
+
+def _flat(name, color):
+    mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
+    mat.diffuse_color = color
+    return mat
+
+
 def rig_tiles(a, scene, cam):
     """One tile per rig_test key, each framed on its own posed mesh, then the armature back at rest."""
     workbench(scene)
@@ -225,6 +284,7 @@ def rig_tiles(a, scene, cam):
     act = bpy.data.actions["rig_test"]
     arm.animation_data_create().action = act
     wire_overlay(a, obj)
+    socket_markers(a)
     frames = sorted({int(round(k.co.x)) for fc in act.fcurves for k in fc.keyframe_points})
     tiles = []
     for f in frames:

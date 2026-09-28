@@ -8,6 +8,8 @@ Friction found by the battle-test workers, the rig, texture and animate agents, 
 - **UV padding isn't pixels.** Packed islands end up about 0.9 × `pad_px` apart, and the ratio drifts with the layout. `margin_method` (SCALED, ADD or FRACTION) makes no difference in 4.5, so a fix has to measure the packed gap.
 - **Model rebuilds aren't deterministic with Bevel.** Face order and loop starts vary, so UVs move and `verify` reads CHANGED.
 - **Texel density wobbles.** It varied 139.1–139.7 px/m across rebuilds that `verify` called IDENTICAL.
+- **Hovering isn't caught.** The animate check fails a mesh below the ground, but not a seated body floating above it.
+- **Hem chains aren't checked.** HUMANOID.md asks for front and back chains on a hem below the hips, and nothing enforces it. The dwarf's knee-length tunic has none, so seated it stands as a stiff tube.
 - **No balance check.** The animate check can't tell when the body's weight leaves its support, and pops are only a WARN, since a fast strike can come close to the threshold.
 
 ## Review sheets
@@ -29,6 +31,7 @@ Friction found by the battle-test workers, the rig, texture and animate agents, 
 
 - **`lathe` flat caps leave sharp rims.** A cap meets the side at a hard 90°, with no option to round or dome it.
 - **No character modelling helpers.** Rings on other axes, loop bridging and caps were each written by hand.
+- **Planting pulls feet home.** `animation.clip` plants a clip's planted feet at their standing spots, so an idle whose feet rest elsewhere (a cross-legged sit) can't plant them. The dwarf's animate script passes `clip` a spec without them.
 - **`courses` works only on axis-aligned walls.**
 - **`painted_light` has no thin-part exclusion** for STYLIZED.md's small-facet rule.
 - **Olive patches in normal bakes.** The WoW butcher table's texture_ref normal map has patches of strongly tilted normals on some long plank faces, both before and after the `make_high` change. The cage likely reaches a neighbouring plank.

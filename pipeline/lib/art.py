@@ -16,7 +16,7 @@ HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 LUMA = np.array([0.299, 0.587, 0.114])
 
 SWATCH = {"color": None, "roughness": 0.8, "metallic": 0, "accent": False, "touches": []}
-BUDGET = {"tri_budget", "texture_size", "limits"}
+BUDGET = {"tri_budget", "head_tri_budget", "texture_size", "limits"}
 HELPERS = {"painted_light": ("nodes", "Tree.painted_light"), "brush": ("nodes", "Tree.brush"),
            "make_high": ("modeling", "make_high")}
 PER_ASSET = {"top", "normal"}

@@ -1,6 +1,6 @@
 # Humanoid skeleton
 
-The required bones below fill every required slot of Unity's Humanoid avatar and Godot's SkeletonProfileHumanoid. Use their names and hierarchy exactly; add extra chains under them only as *Extra bones* allows.
+The required bones below fill every required slot of Unity's Humanoid avatar and Godot's SkeletonProfileHumanoid. Use their names and hierarchy exactly; add extra chains under them only as *Extra bones* allows, and the four sockets *Attachment points* names.
 
 ## Rest pose
 
@@ -44,7 +44,21 @@ Give a part its own chain when it hangs or trails off the body and would shear, 
 - **Weights.** Pass every extra bone to `rigging.bind` in `skip`, so bone heat leaves them off the body, then `rigging.chain` blends the part along its bones and into the parent at the root.
 - **Budget.** Extra bones count toward `limits.max_bones`.
 
-Test action poses, all in one `rig_test`. Directions are in world space, so they read the same from either rest pose:
+## Attachment points
+
+Every humanoid carries four sockets, where the engine hangs swappable equipment: a weapon or shield in each hand, a helm, a cloak. Each is a bone with `"deform": False`, so it takes no weights and doesn't count toward `max_bones`. The check fails a humanoid without all four. Its local Y runs head to tail, 10 cm long; set its local Z with `up` rather than `roll`, and let `build` mirror `socket_hand.L`.
+
+| socket | parent | head | tail | up (local Z) |
+|---|---|---|---|---|
+| socket_hand.L | hand.L | the grip: centred across the palm, level with the finger roots, one finger's thickness off the palm, where a held handle passes | along the handle toward the thumb, the way a held blade points | out the back of the hand |
+| socket_helm | head | the crown of the skull, on the scalp under any hair | straight up | forward, −Y |
+| socket_cloak | chest | the surface of the back between the shoulder blades, level with the shoulder line, on the skin under any hair | straight down | forward, −Y |
+
+Equipment modelled into the mesh still rigs as the rest of this file says; a socket only marks where swapped equipment goes.
+
+## Test action
+
+Poses, all in one `rig_test`. Directions are in world space, so they read the same from either rest pose:
 
 1. Arms down to the sides, then raised overhead.
 2. Elbows bent 130°.

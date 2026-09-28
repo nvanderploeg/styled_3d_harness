@@ -40,6 +40,18 @@ def zone(obj, name, faces=None):
     return mat
 
 
+HEAD = "head"
+
+
+def head(obj, faces=None):
+    """Mark faces (all when None; else polygon indices) of obj as the head, which `head_tri_budget` counts:
+    the skull and face and what grows from or rides on them (hair, ears, a beard, a hat). The neck is body."""
+    me = obj.data
+    attr = me.attributes.get(HEAD) or me.attributes.new(HEAD, "BOOLEAN", "FACE")
+    for i in (range(len(me.polygons)) if faces is None else faces):
+        attr.data[i].value = True
+
+
 def bake_modifiers(obj):
     dg = bpy.context.evaluated_depsgraph_get()
     me = bpy.data.meshes.new_from_object(obj.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)

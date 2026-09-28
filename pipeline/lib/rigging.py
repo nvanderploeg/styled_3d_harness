@@ -4,6 +4,9 @@ import bmesh
 import bpy
 from mathutils import Vector
 
+# Humanoid attachment points, socket → the bone it rides: keep in step with rig-asset HUMANOID.md.
+SOCKETS = {"socket_hand.L": "hand.L", "socket_hand.R": "hand.R", "socket_helm": "head", "socket_cloak": "chest"}
+
 
 def section(a, axis="z", value=0.0):
     """Islands where the plane axis=value cuts the mesh: [(centre, size)] as Vectors, sorted along x.
@@ -38,7 +41,8 @@ def section(a, axis="z", value=0.0):
 
 def build(a, bones, mirror=True):
     """Create `<slug>_rig` from bone dicts: name, head, tail, parent (optional), roll in degrees (optional),
-    deform (default True). With mirror, every `.L` bone gets a `.R` twin across X."""
+    up (optional, in place of roll: a direction the bone's local Z turns toward), deform (default True).
+    With mirror, every `.L` bone gets a `.R` twin across X."""
     old = a.armature
     if old:
         bpy.data.objects.remove(old)
@@ -48,6 +52,8 @@ def build(a, bones, mirror=True):
             if b["name"].endswith(".L"):
                 m = dict(b, name=b["name"][:-2] + ".R",
                          head=_flip(b["head"]), tail=_flip(b["tail"]), roll=-b.get("roll", 0))
+                if "up" in b:
+                    m["up"] = _flip(b["up"])
                 if b.get("parent", "").endswith(".L"):
                     m["parent"] = b["parent"][:-2] + ".R"
                 specs.append(m)
@@ -60,6 +66,8 @@ def build(a, bones, mirror=True):
         eb = data.edit_bones.new(s["name"])
         eb.head, eb.tail = Vector(s["head"]), Vector(s["tail"])
         eb.roll = math.radians(s.get("roll", 0))
+        if "up" in s:
+            eb.align_roll(Vector(s["up"]))
         eb.use_deform = s.get("deform", True)
     for s in specs:
         if s.get("parent"):

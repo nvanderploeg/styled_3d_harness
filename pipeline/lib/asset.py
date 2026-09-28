@@ -54,8 +54,10 @@ class Asset:
         self.art_files = art.chain(ART, raw.get("art"))
         self.art = art.merge(self.art_files, LIMIT_DEFAULTS)
         budget = self.budget(raw.get("budget_class"))
-        sized = {k: budget[k] for k in ("tri_budget", "texture_size") if k in budget}
+        sized = {k: budget[k] for k in ("tri_budget", "head_tri_budget", "texture_size") if k in budget}
         self.spec = {**SPEC_DEFAULTS, **sized, **raw}
+        if self.spec.get("head_tri_budget") is None and self.spec["rig"] == "humanoid":
+            self.spec["head_tri_budget"] = self.spec["tri_budget"]
         if self.spec["texture_mode"] is None:
             self.spec["texture_mode"] = self.art.get("texture_mode")
         # A class's limits replace the guides' rather than tighten them: a character's texel band sits above

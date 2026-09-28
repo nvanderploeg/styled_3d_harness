@@ -58,7 +58,7 @@ Sections, in order:
 | `limits` | any | defaults for the `asset.json` limits listed in ASSET.md | checks |
 | `palette` | zone, set | swatches by name: `{"color": "#rrggbb", "roughness", "metallic", "accent", "touches"}` | `asset.zone_table`, `asset.swatch`, checks |
 | `painted_light`, `brush`, `make_high` | world, zone | keyword arguments for the helper of that name | build scripts |
-| `budgets` | world | per asset class: `tri_budget`, `texture_size`, and any `limits` | an asset's `budget_class` |
+| `budgets` | world | per asset class: `tri_budget`, `head_tri_budget` (characters), `texture_size`, and any `limits` | an asset's `budget_class` |
 | `scale` | world | reference sizes in metres: a character, a door, a storey | model-asset |
 | `shape` | any | the measurements behind the shape and wear rules: lean, sag, taper | model-asset |
 | `kit` | set | the measurements the set's `_kit` code builds from: grid, module sizes, sections | kit code |

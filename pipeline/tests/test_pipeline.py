@@ -112,6 +112,48 @@ def test_a_budget_class_supplies_its_budget_and_limits():
     assert a.limits["texel_density_px_per_m"] == [480, 960]
 
 
+def test_a_budget_class_gives_a_head_its_own_budget():
+    a = new_asset("dwarf", art="azeroth", budget_class="character", rig="humanoid")
+    assert a.spec["tri_budget"] == 12000 and a.spec["head_tri_budget"] == 10000
+    assert new_asset("dwarf", art="azeroth", budget_class="character", head_tri_budget=8000) \
+        .spec["head_tri_budget"] == 8000
+
+
+def test_a_humanoid_head_budget_matches_its_body_when_nothing_sets_it():
+    assert new_asset("dwarf", rig="humanoid", tri_budget=5000).spec["head_tri_budget"] == 5000
+    assert "head_tri_budget" not in new_asset("crate", tri_budget=5000).spec
+
+
+def test_the_head_budget_counts_marked_faces_apart_from_the_body():
+    """A body box and a head box joined by finalize, the head marked before the join. Each budget holds
+    only its own faces, so the whole mesh may pass the body's budget."""
+    clear_scene()
+    a = new_asset("figure", tri_budget=12, head_tri_budget=12)
+    body = mesh_object("body", {"skin": [((-0.2, -0.1, 0), (0.2, 0.1, 1))]})
+    head = mesh_object("head", {"skin": [((-0.1, -0.1, 1.2), (0.1, 0.1, 1.4))]})
+    modeling.head(head)
+    with contextlib.redirect_stdout(io.StringIO()):
+        modeling.finalize(a, [body, head])
+    r = checks.Report()
+    checks.mesh_checks(a, r, "model")
+    assert r.metrics["head_tris"] == 12 and r.metrics["body_tris"] == 12, r.metrics
+    assert not [f for f in r.fails if "tri" in f], r.fails
+
+    a = new_asset("figure", tri_budget=12, head_tri_budget=10)
+    r = checks.Report()
+    checks.mesh_checks(a, r, "model")
+    assert any("12 head tris exceeds head_tri_budget 10" in f for f in r.fails), r.fails
+
+
+def test_a_head_budget_needs_the_head_marked():
+    clear_scene()
+    a = new_asset("figure", rig="humanoid")
+    mesh_object("figure", {"skin": [((-0.2, -0.1, 0), (0.2, 0.1, 1))]})
+    r = checks.Report()
+    checks.mesh_checks(a, r, "model")
+    assert any("no faces are marked as the head" in f for f in r.fails), r.fails
+
+
 def test_asset_json_overrides_its_budget_class():
     a = new_asset("dwarf", art="azeroth", budget_class="character", tri_budget=6000,
                   limits={"texel_density_px_per_m": [400, 900]})
@@ -452,6 +494,57 @@ def test_a_shell_picks_one_loose_part_for_rigid_weights():
     assert clasp == {v.index for v in obj.data.vertices if v.co.x > 0.1}, clasp
     assert rigging.rigid(a, "braid_2", clasp) == 8
 
+def socketed_humanoid(slug, sockets):
+    clear_scene()
+    a = new_asset(slug, rig="humanoid")
+    mesh_object(slug, {"body": [((-0.2, -0.1, 0), (0.2, 0.1, 1.2))]})
+    rigging.build(a, [
+        {"name": "root", "head": (0, 0, 0), "tail": (0, 0, 0.1), "deform": False},
+        {"name": "chest", "head": (0, 0, 0.1), "tail": (0, 0, 0.9), "parent": "root"},
+        {"name": "head", "head": (0, 0, 0.9), "tail": (0, 0, 1.2), "parent": "chest"},
+        {"name": "hand.L", "head": (0.2, 0, 0.6), "tail": (0.2, 0, 0.4), "parent": "chest"},
+        *sockets,
+    ])
+    with contextlib.redirect_stdout(io.StringIO()):
+        rigging.bind(a)
+    rigging.test_action(a, [{"chest": (10, 0, 0)}])
+    r = checks.Report()
+    checks.rig_checks(a, r)
+    return a, [f for f in r.fails if "socket" in f or "attachment" in f]
+
+
+SOCKETS = [
+    {"name": "socket_hand.L", "head": (0.2, -0.02, 0.35), "tail": (0.2, -0.12, 0.35), "parent": "hand.L",
+     "up": (1, 0, 0), "deform": False},
+    {"name": "socket_helm", "head": (0, 0, 1.2), "tail": (0, 0, 1.3), "parent": "head", "up": (0, -1, 0),
+     "deform": False},
+    {"name": "socket_cloak", "head": (0, 0.1, 0.85), "tail": (0, 0.1, 0.75), "parent": "chest", "up": (0, -1, 0),
+     "deform": False},
+]
+
+
+def test_a_humanoid_rig_carries_its_attachment_points():
+    a, fails = socketed_humanoid("knight", SOCKETS)
+    assert not fails, fails
+    assert set(rigging.SOCKETS) <= set(a.armature.data.bones.keys())
+    assert "socket_helm" not in a.mesh.vertex_groups, "an attachment point took skin weights"
+    _, fails = socketed_humanoid("knight", SOCKETS[1:])
+    assert fails and "socket_hand.L" in fails[0] and "socket_hand.R" in fails[0], fails
+    _, fails = socketed_humanoid("knight", [dict(s, deform=True) if s["name"] == "socket_helm" else s
+                                             for s in SOCKETS])
+    assert fails == ["socket_helm deforms; an attachment point is a non-deform bone"], fails
+
+
+def test_up_turns_a_bones_z_axis_and_mirrors_across_x():
+    a, _ = socketed_humanoid("knight", SOCKETS)
+    bones = a.armature.data.bones
+    left, right = (bones[f"socket_hand.{s}"].matrix_local.to_3x3() for s in "LR")
+    assert (left.col[1] - Vector((0, -1, 0))).length < 1e-4 and (left.col[2] - Vector((1, 0, 0))).length < 1e-4
+    assert (right.col[1] - Vector((0, -1, 0))).length < 1e-4 and (right.col[2] - Vector((-1, 0, 0))).length < 1e-4
+    helm = bones["socket_helm"].matrix_local.to_3x3()
+    assert (helm.col[2] - Vector((0, -1, 0))).length < 1e-4, helm
+
+
 # --- animation
 
 LEGS = {"clips": [], "props": {}}
@@ -620,6 +713,30 @@ def test_rig_review_draws_each_pose_and_leaves_the_rig_at_rest():
     assert frames == [1, 11, 21] and len(tiles) == 3, frames
     assert a.armature.animation_data.action is None
     assert all(pb.matrix_basis == Matrix() for pb in a.armature.pose.bones)
+
+
+def test_the_wire_overlay_thins_on_short_edges_and_leaves_the_mesh_alone():
+    clear_scene()
+    a = new_asset("figure")
+    obj = mesh_object("figure", {"body": [((-1, -0.5, 0), (1, 0.5, 2))], "face": [((1.5, 0, 0), (1.51, 0.01, 0.01))]})
+    wire = review.wire_overlay(a, obj)
+    group = wire.vertex_groups["wire_scale"].index
+    weight = {v.index: next(g.weight for g in v.groups if g.group == group) for v in wire.data.vertices}
+    big = [weight[v.index] for v in wire.data.vertices if v.co.x < 1.2]
+    small = [weight[v.index] for v in wire.data.vertices if v.co.x > 1.2]
+    assert min(big) == 1.0 and max(small) < 0.2, (big, small)
+    assert not obj.vertex_groups and wire.data is not obj.data
+
+
+def test_rig_review_draws_each_attachment_point_on_its_bone():
+    a, _ = socketed_humanoid("knight", SOCKETS)
+    markers = review.socket_markers(a)
+    assert sorted(m.parent_bone for m in markers) == sorted(rigging.SOCKETS)
+    a.armature.pose.bones["head"].rotation_euler = (math.radians(90), 0, 0)
+    bpy.context.view_layer.update()
+    helm = next(m for m in markers if m.parent_bone == "socket_helm")
+    tip = (a.armature.matrix_world @ a.armature.pose.bones["socket_helm"].head)
+    assert (helm.matrix_world.translation - tip).length < 1e-4, (helm.matrix_world.translation, tip)
 
 
 # --- painted light

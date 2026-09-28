@@ -6,6 +6,7 @@ import bpy
 import animation
 import bake
 import material
+import rigging
 
 
 def export(a):
@@ -71,8 +72,9 @@ def verify(a, glb, clips=()):
         me = meshes[0].data
         tris = sum(len(p.vertices) - 2 for p in me.polygons)
         print(f"  tris: {tris}  materials: {[m.name for m in me.materials]}")
-        if tris > a.spec["tri_budget"]:
-            fails.append(f"{tris} tris exceeds tri_budget")
+        budget = a.spec["tri_budget"] + (a.spec.get("head_tri_budget") or 0)
+        if tris > budget:
+            fails.append(f"{tris} tris exceeds the tri budget {budget}")
         if len(me.materials) != 1:
             fails.append(f"{len(me.materials)} materials, expected 1")
         elif not any(n.type == "TEX_IMAGE" for n in me.materials[0].node_tree.nodes):
@@ -84,6 +86,10 @@ def verify(a, glb, clips=()):
             fails.append("mesh is not skinned to the armature")
         else:
             print(f"  bones: {len(arms[0].data.bones)}")
+            if a.spec["rig"] == "humanoid":
+                missing = [n for n in rigging.SOCKETS if n not in arms[0].data.bones]
+                if missing:
+                    fails.append(f"attachment points missing from the file: {missing}")
     found = sorted(act.name for act in bpy.data.actions)
     if clips or found:
         print(f"  animations: {found}")

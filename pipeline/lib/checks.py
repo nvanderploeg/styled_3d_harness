@@ -10,6 +10,8 @@ from mathutils.kdtree import KDTree
 
 import animation
 import art
+import modeling
+import rigging
 import uvmath
 
 
@@ -89,7 +91,18 @@ def mesh_checks(a, r, stage):
     r.metrics.update(tris=tris, faces=faces, verts=len(bm.verts),
                      tri_face_ratio=round(tri_faces / max(faces, 1), 3))
     r.require(faces > 0, "mesh has no faces")
-    r.require(tris <= a.spec["tri_budget"], f"{tris} tris exceeds tri_budget {a.spec['tri_budget']}")
+    head_budget = a.spec.get("head_tri_budget")
+    if head_budget is None:
+        r.require(tris <= a.spec["tri_budget"], f"{tris} tris exceeds tri_budget {a.spec['tri_budget']}")
+    else:
+        layer = bm.faces.layers.bool.get(modeling.HEAD)
+        head = sum(len(f.verts) - 2 for f in bm.faces if f[layer]) if layer else 0
+        r.metrics.update(head_tris=head, body_tris=tris - head)
+        r.require(head > 0, f"no faces are marked as the head; head_tri_budget {head_budget} counts them "
+                            "(modeling.head)")
+        r.require(head <= head_budget, f"{head} head tris exceeds head_tri_budget {head_budget}")
+        r.require(tris - head <= a.spec["tri_budget"],
+                  f"{tris - head} body tris exceeds tri_budget {a.spec['tri_budget']}")
     r.require(ngons == 0, f"{ngons} n-gons — cut them into quads")
     r.require(tri_faces / max(faces, 1) <= a.limits["max_tri_ratio"],
               f"{tri_faces}/{faces} faces are triangles (limit {a.limits['max_tri_ratio']:.0%}) — keep it quad-dominant")
@@ -210,6 +223,17 @@ def rig_checks(a, r):
     r.require(0 < len(deform) <= a.limits["max_bones"], f"{len(deform)} deform bones (max {a.limits['max_bones']})")
     roots = [b.name for b in arm.data.bones if b.parent is None]
     r.require(len(roots) == 1, f"skeleton needs exactly one root bone, found {roots}")
+    if a.spec["rig"] == "humanoid":
+        bones = arm.data.bones
+        missing = [n for n in rigging.SOCKETS if n not in bones]
+        r.require(not missing, f"humanoid attachment points missing: {missing} (rig-asset HUMANOID.md)")
+        for n, parent in rigging.SOCKETS.items():
+            b = bones.get(n)
+            if b is None:
+                continue
+            r.require(not b.use_deform, f"{n} deforms; an attachment point is a non-deform bone")
+            r.require(b.parent is not None and b.parent.name == parent,
+                      f"{n} hangs from {b.parent.name if b.parent else None}, not {parent}")
 
     groups = {g.index: g.name for g in obj.vertex_groups}
     orphan = sorted({groups[g.group] for v in obj.data.vertices for g in v.groups

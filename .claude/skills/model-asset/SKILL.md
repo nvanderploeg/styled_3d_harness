@@ -19,11 +19,13 @@ Read every reference image, and every guide `pipeline/asset art <slug>` lists: t
 
 Write the part list before any code. For each part give its shape, how you'll build it (lathe, extruded bmesh, a primitive plus modifiers), its zone, and its share of the tri budget. Spend triangles on **silhouette**: a loop earns its place by changing the outline in some view, by carrying a bend the rig will make, or by bounding a zone. Detail that doesn't reach the silhouette goes to the textures. Shape and size each part by the guides: their proportions, taper, lean and sag, their `scale` sizes, and the set's `kit` measurements.
 
-Done when every visible feature of the brief and refs belongs to a part, every shape rule in the guides is either in the plan or named as not applying, and the budget shares add up to no more than `tri_budget`.
+When the spec has a `head_tri_budget` (every humanoid does), the head is budgeted apart: its parts share `head_tri_budget` and the rest share `tri_budget`. The head is the skull and face and what grows from or rides on them (hair, ears, a beard, a hat); the neck is body. Spend the head's triangles where the face reads: brow, nose, jaw, the eye sockets and mouth, and the ears and hair outline.
+
+Done when every visible feature of the brief and refs belongs to a part, every shape rule in the guides is either in the plan or named as not applying, and the budget shares add up to no more than `tri_budget`, and the head's to no more than `head_tri_budget`.
 
 ## 3. Build and iterate
 
-Copy `pipeline/templates/model.py` to `build/model.py` and read the docstrings in `pipeline/lib/modeling.py`. Write the parts, zone every face, then call `finalize` and `unwrap`. Add `make_high` when the asset has hard edges that would read better rounded in the normal map.
+Copy `pipeline/templates/model.py` to `build/model.py` and read the docstrings in `pipeline/lib/modeling.py`. Write the parts, zone every face, mark the head's faces with `head` when the spec has a head budget, then call `finalize` and `unwrap`. Add `make_high` when the asset has hard edges that would read better rounded in the normal map.
 
 For a piece of a set, write the geometry as a function of the piece's parameters in `assets/_kit/` (ASSET.md, *Sets*). `build/model.py` is then one call to it.
 

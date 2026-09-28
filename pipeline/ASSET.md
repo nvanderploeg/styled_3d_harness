@@ -53,10 +53,11 @@ every approved piece that uses it.
 | `brief` | what the asset is, in the user's words plus any decisions | `""` |
 | `refs` | paths under `refs/`, each with what it shows | `[]` |
 | `art` | the art guide chain: `"<world>"`, `"<world>/<zone>"` or `"<world>/<zone>/<set>"` (ART.md) | none: no guides |
-| `budget_class` | a class in the guides' `budgets`; it supplies `tri_budget`, `texture_size` and its `limits` | none |
+| `budget_class` | a class in the guides' `budgets`; it supplies `tri_budget`, `head_tri_budget`, `texture_size` and its `limits` | none |
 | `rig` | `"none"`, `"humanoid"`, or `"custom: <skeleton in words>"` | `"none"` |
 | `texture_mode` | `"stylized"` (lighting painted into albedo) or `"pbr"` (engine lights it) | the world guide's, else chosen from the refs |
-| `tri_budget` | triangle ceiling for the low mesh | the budget class's, else `3000` |
+| `tri_budget` | triangle ceiling for the low mesh, less its head when `head_tri_budget` is set | the budget class's, else `3000` |
+| `head_tri_budget` | triangle ceiling for the faces `modeling.head` marks, apart from `tri_budget` | the budget class's, else `tri_budget` on a humanoid, else none |
 | `texture_size` | square map size in px, a power of two | the budget class's, else `1024` |
 | `height_m` | real-world height in metres (Z extent) | none |
 | `shots` | extra review cameras: `{"name", "target": [x,y,z], "from": [dx,dy,dz], "distance": m, "lens": mm}` | `[]` |
@@ -64,7 +65,8 @@ every approved piece that uses it.
 | `animations` | the clips the `animate` stage keys (*Animations*) | none |
 
 Budget guide, when the world guide has no `budgets`: small prop 300–1.5k tris at 512–1k, hero prop 1.5k–5k at
-1k–2k, character 5k–20k at 2k.
+1k–2k, character 5k–20k at 2k with a head of about as many again. The head's share is the style's: a world guide
+sets it on its character class.
 
 `limits` keys: `max_tri_ratio` 0.15, `allow_open` false, `uv_overlap_ok` false, `min_uv_coverage` 0.35,
 `texel_density_tolerance` 2.0, `texel_density_px_per_m` none (a `[min, max]` range), `min_zone_contrast` 20
@@ -133,8 +135,8 @@ Start from `pipeline/templates/<stage>.py`. The script runs inside Blender with 
 palette swatch, and `asset.zone_table(local)` every zone's colour, roughness and metallic. The helper modules document themselves; read the docstrings of the
 ones a stage uses:
 
-- `modeling`: `lathe`, `mesh_object`, `quadify`, `footprint_outline`, `zone`, `finalize`, `sharpen`, `unwrap`,
-  `make_high`
+- `modeling`: `lathe`, `mesh_object`, `quadify`, `footprint_outline`, `zone`, `head`, `finalize`, `sharpen`,
+  `unwrap`, `make_high`
 - `rigging`: `section`, `build`, `bind`, `clean`, `rigid`, `chain`, `shell`, `mirror`, `test_action`
 - `animation`: `clip`, `plant`, `reach`, `sample`, `spring`, `apply`, `current`, `pose_at`, `props`, `settings`
 - `nodes`: `tree(mat)` for shader-node shorthand, plus `srgb` for picking colours by eye. Its stylized patterns
@@ -148,7 +150,8 @@ ones a stage uses:
 Tiles read left to right, top to bottom.
 
 - `model`: front, right, back, left, top, three-quarter, three-quarter back, high mesh. Zones are coloured and the wireframe is overlaid. `model_uv.png`: grey islands, red overlap.
-- `rig`: three-quarter view across the frames of the `rig_test` action.
+- `rig`: three-quarter view across the frames of the `rig_test` action. Each attachment point is an axis tripod
+  drawn over the mesh: X red, Y (along the bone) green, Z blue.
 - `animate`: one row per clip, four frames from first to last, seen from the front right with the props in grey.
 - `texture_*`: lit by an HDRI, in the order front, right, back, left, top, three-quarter, three-quarter back, then unlit albedo.
 - The top tile looks straight down with +Y (the back) at the top of the image.
