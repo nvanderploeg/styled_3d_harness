@@ -1,6 +1,10 @@
 # Humanoid skeleton
 
-Use these names and this hierarchy exactly. Together they fill every required slot of Unity's Humanoid avatar and Godot's SkeletonProfileHumanoid.
+The required bones below fill every required slot of Unity's Humanoid avatar and Godot's SkeletonProfileHumanoid. Use their names and hierarchy exactly; add extra chains under them only as *Extra bones* allows.
+
+## Rest pose
+
+The character faces −Y. Build the rig in the pose the model was made in: an A-pose, arms about 45° below horizontal, unless the request or a guide names a T-pose, arms straight out along ±X. The joint table holds in both.
 
 ```
 root                         head (0,0,0), tail straight up 10% of height, deform False
@@ -31,7 +35,16 @@ root                         head (0,0,0), tail straight up 10% of height, defor
 
 Add fingers (`finger_index_1.L` … `_3`, and so on) only when the mesh models separate fingers and the tri budget paid for their loops. Otherwise the whole hand weights to `hand.L`.
 
-Test action poses, all in one `rig_test`:
+## Extra bones
+
+Give a part its own chain when it hangs or trails off the body and would shear, stretch or pass through the body if it followed the required bones: a long beard crossing the neck, a witch's hat tip, a cloak or skirt over the legs, braids, a tail, long ears. A part that rides solid on one bone (a helmet, a shoulder plate) takes `rigid` weights on that bone instead.
+
+- **Where.** Parent each chain's first bone to the required bone the part hangs from: a beard or hat to `head`, a cloak to `chest`, a skirt or tail to `hips`. The required hierarchy stays untouched, so engines map the humanoid as before and carry the extra chains along for spring or cloth motion.
+- **Shape.** Two to four connected bones from the attachment to the tip, along the part's centreline. Name them `<part>_1`, `<part>_2`, … from the root; a pair on both sides takes `.L` and mirrors.
+- **Weights.** `rigging.chain` blends the part along its bones and into the parent at the root.
+- **Budget.** Extra bones count toward `limits.max_bones`.
+
+Test action poses, all in one `rig_test`. Directions are in world space, so they read the same from either rest pose:
 
 1. Arms down to the sides, then raised overhead.
 2. Elbows bent 130°.
@@ -39,3 +52,6 @@ Test action poses, all in one `rig_test`:
 4. Spine and chest bent forward 40°, then twisted 45°.
 5. Head turned 70° and nodded 40°.
 6. Wrists bent 60° and forearms twisted 80°.
+7. Each extra chain swung 40° forward, back and to each side, bone by bone.
+
+Elbows fold the forearm toward −Y, knees fold the shin toward +Y, and a squat takes the thighs toward −Y. A bend that goes another way has the wrong roll.

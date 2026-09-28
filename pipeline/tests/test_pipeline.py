@@ -26,6 +26,7 @@ import checks  # noqa: E402
 import imgio  # noqa: E402
 import nodes  # noqa: E402
 import review  # noqa: E402
+import rigging  # noqa: E402
 
 PLACES = {"world_art.md": "azeroth", "zone_art.md": "azeroth/duskwood",
           "set_art.md": "azeroth/duskwood/human_village"}
@@ -192,6 +193,47 @@ def test_neighbours_include_shells_that_intersect_or_rest_on_each_other():
         "crate": [((2.0, 2.0, 0.0), (2.5, 2.5, 0.5))],          # standing apart
     })
     assert checks.neighbours(obj) == [("cloth", "top"), ("leg", "top")], checks.neighbours(obj)
+
+
+# --- rigging
+
+def test_a_chain_blends_a_hanging_part_from_its_parent_to_its_tip():
+    """A beard hanging below a head bone on a two-bone chain. At the chin it follows the head, at the tip
+    it follows the last bone, and between them each vertex splits its weight between two neighbours."""
+    clear_scene()
+    a = new_asset("beardy", rig="humanoid")
+    obj = mesh_object("beardy", {"skin": [((-0.1, -0.1, 1.0), (0.1, 0.1, 1.2))],
+                                 "beard": [((-0.05, -0.15, 0.6), (0.05, -0.1, 1.0))]})
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    beard = [f for f in bm.faces if f.material_index == 1]
+    bmesh.ops.subdivide_edges(bm, edges=list({e for f in beard for e in f.edges if abs(e.verts[0].co.z - e.verts[1].co.z) > 0.1}),
+                              cuts=7, use_grid_fill=True)
+    bm.to_mesh(obj.data)
+    bm.free()
+    rigging.build(a, [
+        {"name": "root", "head": (0, 0, 0), "tail": (0, 0, 0.1), "deform": False},
+        {"name": "head", "head": (0, 0, 1.0), "tail": (0, 0, 1.2), "parent": "root"},
+        {"name": "beard_1", "head": (0, -0.12, 1.0), "tail": (0, -0.12, 0.8), "parent": "head"},
+        {"name": "beard_2", "head": (0, -0.12, 0.8), "tail": (0, -0.12, 0.6), "parent": "beard_1"},
+    ], mirror=False)
+    rigging.rigid(a, "head", "skin")
+    rigging.chain(a, ["beard_1", "beard_2"], "beard")
+    groups = {g.index: g.name for g in obj.vertex_groups}
+
+    def weights(v):
+        return {groups[g.group]: round(g.weight, 3) for g in v.groups if g.weight > 1e-4}
+
+    beard_verts = sorted((v for v in obj.data.vertices if v.co.y < -0.099 and v.co.z < 0.999),
+                         key=lambda v: -v.co.z)
+    assert weights(beard_verts[-1]) == {"beard_2": 1.0}, weights(beard_verts[-1])
+    chin = [v for v in obj.data.vertices if v.co.y < -0.099 and abs(v.co.z - 1.0) < 1e-4]
+    assert chin and all(weights(v) == {"head": 1.0} for v in chin), [weights(v) for v in chin]
+    for v in beard_verts:
+        w = weights(v)
+        assert len(w) <= 2 and abs(sum(w.values()) - 1) < 1e-3, w
+    mid = [weights(v) for v in beard_verts if abs(v.co.z - 0.8) < 1e-3]
+    assert mid and all(w == {"beard_1": 0.5, "beard_2": 0.5} for w in mid), mid
 
 
 # --- review sheets

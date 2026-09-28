@@ -111,21 +111,71 @@ def clean(a, max_influences=None, threshold=0.01):
     return len(empty)
 
 
-def rigid(a, bone, where):
-    """Weight vertices fully to one bone: a zone name, or a predicate on the vertex position.
-    For parts that move as a solid (wheels, lids, armour plates)."""
-    obj = a.mesh
+def _select(obj, where):
+    """Vertex indices in a zone (by name) or passing a predicate on the vertex position."""
     if isinstance(where, str):
         slots = [m.name for m in obj.data.materials]
         idx = slots.index(f"zone_{where}")
-        verts = {v for p in obj.data.polygons if p.material_index == idx for v in p.vertices}
-    else:
-        verts = {v.index for v in obj.data.vertices if where(v.co)}
-    vg = obj.vertex_groups.get(bone) or obj.vertex_groups.new(name=bone)
+        return {v for p in obj.data.polygons if p.material_index == idx for v in p.vertices}
+    return {v.index for v in obj.data.vertices if where(v.co)}
+
+
+def _assign(obj, verts, weights_of):
+    """Replace the weights of verts with weights_of(index) → {bone: weight}."""
     for g in obj.vertex_groups:
-        if g != vg:
-            g.remove(list(verts))
-    vg.add(list(verts), 1.0, "REPLACE")
+        g.remove(list(verts))
+    for i in verts:
+        for bone, w in weights_of(i).items():
+            if w > 0:
+                (obj.vertex_groups.get(bone) or obj.vertex_groups.new(name=bone)).add([i], w, "REPLACE")
+
+
+def rigid(a, bone, where):
+    """Weight vertices fully to one bone: a zone name, or a predicate on the vertex position.
+    For parts that move as a solid (wheels, lids, armour plates)."""
+    verts = _select(a.mesh, where)
+    _assign(a.mesh, verts, lambda i: {bone: 1.0})
+    return len(verts)
+
+
+def chain(a, bones, where):
+    """Weight a hanging part along a chain of connected bones, root first: each vertex blends between the
+    two bones whose middles it falls between along the chain, and between the root and the first bone's
+    middle it blends into that bone's parent. For beards, cloaks, braids, hat tips and tails.
+    where is a zone name or a predicate, as in rigid."""
+    obj, arm = a.mesh, a.armature
+    verts = _select(obj, where)
+    chain_bones = [arm.data.bones[n] for n in bones]
+    pts = [b.head_local for b in chain_bones] + [chain_bones[-1].tail_local]
+    starts = [0.0]
+    for p, q in zip(pts, pts[1:]):
+        starts.append(starts[-1] + (q - p).length)
+    anchors = [((starts[i] + starts[i + 1]) / 2, n) for i, n in enumerate(bones)]
+    parent = chain_bones[0].parent
+    if parent:
+        anchors.insert(0, (0.0, parent.name))
+
+    def along(co):
+        best = None
+        for i, (p, q) in enumerate(zip(pts, pts[1:])):
+            seg = q - p
+            t = min(max((co - p).dot(seg) / seg.length_squared, 0.0), 1.0)
+            d = (p + seg * t - co).length
+            if best is None or d < best[0]:
+                best = (d, starts[i] + t * seg.length)
+        return best[1]
+
+    def weights_of(i):
+        s = along(obj.data.vertices[i].co)
+        if s <= anchors[0][0]:
+            return {anchors[0][1]: 1.0}
+        for (s0, b0), (s1, b1) in zip(anchors, anchors[1:]):
+            if s <= s1:
+                w = (s - s0) / (s1 - s0)
+                return {b0: 1.0 - w, b1: w}
+        return {anchors[-1][1]: 1.0}
+
+    _assign(obj, verts, weights_of)
     return len(verts)
 
 

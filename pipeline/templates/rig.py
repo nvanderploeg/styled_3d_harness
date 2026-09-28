@@ -14,6 +14,7 @@ bones = [
 rigging.build(asset, bones)
 rigging.bind(asset)
 # rigging.rigid(asset, "lid", "trim")  # solid parts: one bone, full weight
+# rigging.chain(asset, ["beard_1", "beard_2"], "beard")  # hanging parts: blended along their own chain
 rigging.test_action(asset, [
     {"spine": (30, 0, 0)},   # each pose: bone → (x, y, z) degrees, bone-local
     {"spine": (-30, 0, 0)},

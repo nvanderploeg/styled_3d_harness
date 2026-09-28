@@ -11,7 +11,7 @@ The rig builds on `model.blend`. If the model is failing or stale (`pipeline/ass
 
 ## 1. Find the joints
 
-Set `rig` in `asset.json` if it's `"none"`. For a humanoid, read [HUMANOID.md](HUMANOID.md) now; its bone list replaces the one you would design.
+Set `rig` in `asset.json` if it's `"none"`. For a humanoid, read [HUMANOID.md](HUMANOID.md) now; its required bones replace the ones you would design, and its *Extra bones* section says when a part gets a chain of its own.
 
 Locate every pivot from evidence. `rigging.section(asset, axis, value)` cuts the mesh and returns each island's centre and size: a limb is an island, and a joint is where its size pinches. Cross-check each pivot on `review/model.png`. A joint sits at the centre of the limb's cross-section, where the loops the model put there bunch up.
 
@@ -22,7 +22,7 @@ Done when every bone has a head and tail you can justify with a section or a vis
 Copy `pipeline/templates/rig.py` to `build/rig.py` and read the docstrings in `pipeline/lib/rigging.py`.
 
 - **Skeleton.** One non-deforming root at the origin, with every other bone below it. Bones run along the limb's centreline. Name paired bones `.L` / `.R` and let `build` mirror the `.L` side. Set the roll so that each joint's main bend is a rotation about its local X.
-- **Weights.** Call `bind` for automatic weights, and `rigid` for solid parts that must move as one piece (wheels, lids, plates).
+- **Weights.** Call `bind` for automatic weights, `rigid` for solid parts that must move as one piece (wheels, lids, plates), and `chain` for parts that hang on a chain of their own (beards, cloaks, tails).
 - **Test action.** `test_action` with poses that take every joint to the far end of its expected range and back. Include twist on anything that twists. A pose the rig will never make in game proves nothing.
 
 ## 3. Build and review

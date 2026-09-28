@@ -37,7 +37,7 @@ Done when the check passes, every rule below holds in the sheets, and for each v
 
 - **Quads.** No n-gons. Triangles only where the surface is flat and never bends. A cap or a pole goes where nothing deforms or highlights.
 - **Edge flow follows form.** Loops ring cylinders and limbs and run along creases. A spiral or a loop that dead-ends in the middle of a surface means the part was built wrong: rebuild it rather than patching.
-- **Deforming meshes** (`rig` is not `"none"`): at least three loops across every joint the rig will bend, spaced evenly and perpendicular to the bend. Anything that bends is one connected surface. Model in the rest pose the rig expects; a humanoid is an A-pose facing −Y.
+- **Deforming meshes** (`rig` is not `"none"`): at least three loops across every joint the rig will bend, spaced evenly and perpendicular to the bend. Anything that bends is one connected surface. Model in the rest pose the rig expects: a humanoid faces −Y in an A-pose, or a T-pose when the request or a guide names one (rig-asset's HUMANOID.md). A part that will swing on its own bones (a beard, a cloak, a hat tip) takes three loops across it at each joint of its chain, like a limb.
 - **Static meshes** may be separate intersecting shells (bands over a barrel, a buckle on a strap). Each shell is closed, and that's cheaper than merging them.
 - **Even density.** Neighbouring quads stay roughly square and similar in size unless curvature asks for more loops.
 
