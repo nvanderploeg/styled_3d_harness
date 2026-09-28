@@ -1,3 +1,4 @@
+import ast
 import hashlib
 import json
 import os
@@ -17,6 +18,7 @@ SPEC_DEFAULTS = {
     "brief": "",
     "refs": [],
     "art": None,
+    "budget_class": None,
     "rig": "none",
     "texture_mode": None,
     "tri_budget": 3000,
@@ -50,10 +52,25 @@ class Asset:
             raw = json.load(f)
         self.art_files = art.chain(ART, raw.get("art"))
         self.art = art.merge(self.art_files, LIMIT_DEFAULTS)
-        self.spec = {**SPEC_DEFAULTS, **raw}
+        budget = self.budget(raw.get("budget_class"))
+        sized = {k: budget[k] for k in ("tri_budget", "texture_size") if k in budget}
+        self.spec = {**SPEC_DEFAULTS, **sized, **raw}
         if self.spec["texture_mode"] is None:
             self.spec["texture_mode"] = self.art.get("texture_mode")
-        self.limits = {**LIMIT_DEFAULTS, **self.art.get("limits", {}), **raw.get("limits", {})}
+        # A class's limits replace the guides' rather than tighten them: a character's texel band sits above
+        # a prop's.
+        self.limits = {**LIMIT_DEFAULTS, **self.art.get("limits", {}), **budget.get("limits", {}),
+                       **raw.get("limits", {})}
+
+    def budget(self, name):
+        """The guides' budget class `name`, or {} for none."""
+        if name is None:
+            return {}
+        budgets = self.art.get("budgets", {})
+        if name not in budgets:
+            raise SystemExit(f"budget_class '{name}' is not a budget in the art guides; "
+                             f"they have {sorted(budgets) or 'none'} (pipeline/asset art {self.slug})")
+        return budgets[name]
 
     def path(self, *parts):
         return os.path.join(self.dir, *parts)
@@ -72,8 +89,8 @@ class Asset:
 
     def fingerprint(self):
         """Hash of what a build or check reads: spec fields, limits in force and art rules.
-        brief, refs and shots are notes, not inputs."""
-        inputs = {k: v for k, v in self.spec.items() if k not in ("brief", "refs", "shots", "slug")}
+        brief, refs and shots are notes, not inputs; budget_class counts through the values it supplies."""
+        inputs = {k: v for k, v in self.spec.items() if k not in ("brief", "refs", "shots", "slug", "budget_class")}
         inputs["limits"] = self.limits
         if self.art:
             inputs["art"] = self.art
@@ -158,14 +175,38 @@ def new(slug):
     spec = os.path.join(d, "asset.json")
     if not os.path.exists(spec):
         with open(spec, "w") as f:
-            json.dump({"slug": slug, **SPEC_DEFAULTS, "limits": {}}, f, indent=2)
+            fields = ("brief", "refs", "art", "budget_class", "rig", "height_m")
+            json.dump({"slug": slug, **{k: SPEC_DEFAULTS[k] for k in fields}, "limits": {}}, f, indent=2)
             f.write("\n")
     print(f"asset: {d}")
 
 
+def kit_modules(script):
+    """Paths of the _kit modules a build script imports, directly or through other kit modules.
+    Only `import x` and `from x import y` statements count."""
+    found, todo = set(), [script]
+    while todo:
+        path = todo.pop()
+        if not os.path.exists(path):
+            continue
+        with open(path) as f:
+            tree = ast.parse(f.read(), path)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [n.name for n in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+                names = [node.module]
+            else:
+                continue
+            for name in names:
+                mod = os.path.join(KIT, name.split(".")[0] + ".py")
+                if os.path.exists(mod) and mod not in found:
+                    found.add(mod)
+                    todo.append(mod)
+    return sorted(found)
+
+
 def status(a):
-    kit = max((os.path.getmtime(os.path.join(KIT, f)) for f in os.listdir(KIT) if f.endswith(".py")),
-              default=0.0) if os.path.isdir(KIT) else 0.0
     rows, upstream_mtime = [], 0.0
     for s in a.stages():
         blend = a.blend(s)
@@ -181,7 +222,9 @@ def status(a):
             state = "unchecked"
         else:
             state = "pass" if rep["pass"] else f"FAIL ({len(rep['fail'])})"
-            changed = ["_kit"] if kit > max(mtime, rep.get("verified", 0.0)) else []
+            since = max(mtime, rep.get("verified", 0.0))
+            kit = [os.path.basename(m) for m in kit_modules(script) if os.path.getmtime(m) > since]
+            changed = [f"_kit ({', '.join(kit)})"] if kit else []
             if rep.get("spec") != a.fingerprint():
                 changed.append("spec")
             if changed:

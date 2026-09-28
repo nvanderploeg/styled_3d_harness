@@ -49,4 +49,5 @@ pipeline/asset compare texture_ref castle_platform_straight castle_platform_cros
 
 ```
 ~/opt/blender/blender --background --factory-startup --python pipeline/tests/test_art.py
+~/opt/blender/blender --background --factory-startup --python pipeline/tests/test_pipeline.py
 ```

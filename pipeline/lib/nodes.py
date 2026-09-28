@@ -82,7 +82,8 @@ class Tree:
         return self._folds(radius, sharpness)[0]
 
     def _folds(self, radius, sharpness):
-        """(convex, concave) edge masks sharing one set of probe nodes."""
+        """(convex, concave) edge masks sharing one set of probe nodes. Where two shells intersect, the
+        seam is concave."""
         bevel = self.node("ShaderNodeBevel", samples=8, Radius=radius)
         geo = self.node("ShaderNodeNewGeometry")
         dot = self.math_v("DOT_PRODUCT", bevel.outputs["Normal"], geo.outputs["Normal"])
@@ -91,8 +92,12 @@ class Tree:
         inside, outside = (self.node("ShaderNodeAmbientOcclusion", inside=flag, only_local=True, samples=32,
                                      Distance=radius * 4).outputs["AO"] for flag in (True, False))
         sign = self.math("SUBTRACT", outside, inside)
-        return (self.math("MULTIPLY", bend, self.map_range(sign, 0.0, 0.03)),
-                self.math("MULTIPLY", bend, self.map_range(sign, 0.0, -0.03)))
+        # A convex edge faces open air. At an intersection the inside probe also hits the other shell's
+        # buried faces, so the sign alone reads the seam as convex.
+        open_air = self.map_range(outside, 0.85, 0.97)
+        convex = self.math("MULTIPLY", self.map_range(sign, 0.0, 0.03), open_air)
+        concave = self.math("MAXIMUM", self.map_range(sign, 0.0, -0.03), self.math("SUBTRACT", 1.0, open_air))
+        return self.math("MULTIPLY", bend, convex), self.math("MULTIPLY", bend, concave)
 
     def height(self, lo=0.0, hi=1.0):
         """0 at z=lo rising to 1 at z=hi (object space, metres)."""
@@ -261,12 +266,13 @@ class Tree:
 
     def painted_light(self, base, key=(0.4, -0.5, 0.75), wrap=0.35, shadow=(0.55, 0.55, 0.75),
                       light=(1.08, 1.04, 0.95), ao_distance=0.15, top=(0.0, 1.0), top_strength=0.15,
-                      edge_radius=0.0, edge_strength=0.35):
+                      edge_radius=0.0, edge_strength=0.35, edge_color=None):
         """base lit by a fixed key light with hue-shifted shadows, AO, a top-down gradient and
         optional edge paint — the hand-painted look. top is the (lo, hi) z range of the gradient.
-        Within edge_radius, convex edges take a highlight of edge_strength; concave creases lose the
-        key light and sink a further edge_strength into the shadow colour, so they read darker than
-        both faces they join."""
+        Within edge_radius, convex edges move edge_strength of the way to edge_color; concave creases
+        and the seams where shells intersect lose the key light and sink a further edge_strength into
+        the shadow colour, so they read darker than both faces they join. edge_color (linear RGB) None is the
+        zone's lit colour lifted halfway to the light tint."""
         geo = self.node("ShaderNodeNewGeometry")
         lam = self.math_v("DOT_PRODUCT", geo.outputs["Normal"], tuple(Vector(key).normalized()))
         lit = self.map_range(lam, -wrap, 1.0)
@@ -280,7 +286,8 @@ class Tree:
         grad = self.map_range(self.height(*top), 0, 1, 1 - top_strength, 1 + top_strength * 0.3)
         col = self.mix(col, grad, 1.0, blend="MULTIPLY")
         if edge_radius > 0:
-            col = self.mix(col, (1, 0.97, 0.9), self.math("MULTIPLY", convex, edge_strength), blend="SCREEN")
+            rim = self.mix(bright, light, 0.5) if edge_color is None else edge_color
+            col = self.mix(col, rim, self.math("MULTIPLY", convex, edge_strength))
             sunk = self.mix(col, shadow, 1.0, blend="MULTIPLY")
             col = self.mix(col, sunk, self.math("MULTIPLY", concave, edge_strength))
         return col

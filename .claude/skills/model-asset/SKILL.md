@@ -9,7 +9,7 @@ You write a Blender build script that makes the asset's low-poly mesh from nothi
 
 ## 1. Spec
 
-If `assets/<slug>/` doesn't exist, run `pipeline/asset new <slug>`. Fill `asset.json` from the request: `brief`, `refs` (copy the images into `refs/`), `art`, `rig`, `tri_budget`, `texture_size`, `height_m`. Pick defaults from the world guide's budget classes, or from the budget guide in ASSET.md when there are none, and write them into `brief`.
+If `assets/<slug>/` doesn't exist, run `pipeline/asset new <slug>`. Fill `asset.json` from the request: `brief`, `refs` (copy the images into `refs/`), `art`, `rig`, `height_m`, and `budget_class` from the world guide's `budgets`. When the guides have no budgets, set `tri_budget` and `texture_size` from the budget guide in ASSET.md.
 
 Settle `texture_size` now. `unwrap` pads islands in pixels at that size, so changing it later means rebuilding the model.
 

@@ -1,2 +1,14 @@
 __pycache__/
-*.blend1
+
+# Blender save backups and in-progress saves
+*.blend[1-9]*
+*.blend@
+
+# Agent worktrees
+.claude/worktrees/
+.claude/settings.local.json
+
+# Work made with the pipeline: this repo holds the pipeline and skills
+/assets/
+/spa/
+/*.zip

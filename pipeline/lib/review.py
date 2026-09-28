@@ -192,6 +192,8 @@ def model_tiles(a, scene, cam):
         high.hide_render = False
         aim(cam, lo, hi, "three_quarter")
         tiles.append(render(scene))
+        low.hide_render = wire.hide_render = False
+        high.hide_render = True
     return tiles
 
 

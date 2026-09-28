@@ -5,6 +5,7 @@ import os
 import bmesh
 import bpy
 import numpy as np
+from mathutils.bvhtree import BVHTree
 from mathutils.kdtree import KDTree
 
 import art
@@ -39,10 +40,15 @@ def run(a, stage):
             texture_checks(a, r, stage)
 
     ok = not r.fails
+    built = os.path.getmtime(a.blend(stage))
+    rep = {"stage": stage, "pass": ok, "built": built, "spec": a.fingerprint(),
+           "fail": r.fails, "warn": r.warns, "metrics": r.metrics}
+    prev = a.report(stage)
+    if prev and prev.get("built") == built and "verified" in prev:
+        rep["verified"] = prev["verified"]
     os.makedirs(a.path("review"), exist_ok=True)
     with open(a.path("review", f"{stage}.json"), "w") as f:
-        json.dump({"stage": stage, "pass": ok, "built": os.path.getmtime(a.blend(stage)), "spec": a.fingerprint(),
-                   "fail": r.fails, "warn": r.warns, "metrics": r.metrics}, f, indent=2)
+        json.dump(rep, f, indent=2)
     for k, v in r.metrics.items():
         print(f"  {k}: {v}")
     for w in r.warns:
@@ -280,8 +286,8 @@ def texture_checks(a, r, stage):
 def zone_checks(a, r, stage, albedo, tri_uv, size):
     """zone_luma and zone_saturation: each zone's mean albedo as sRGB luma (0–255) and HSV saturation;
     set pieces compare zone_luma. limits.albedo_luma and limits.max_saturation bound every zone whose
-    swatch is not an accent. On the base stage, neighbouring zones closer than limits.min_zone_contrast
-    will not separate at a squint."""
+    swatch is not an accent, and neighbouring zones closer than limits.min_zone_contrast will not separate
+    at a squint. All three FAIL on texture_ref and WARN on texture_base."""
     me = a.mesh.data
     mats = np.empty(len(me.loop_triangles), np.int32)
     me.loop_triangles.foreach_get("material_index", mats)
@@ -308,16 +314,39 @@ def zone_checks(a, r, stage, albedo, tri_uv, size):
             report(f"zone {z} has luma {luma[z]}, outside the value key limits.albedo_luma {band}")
         if cap is not None and sat[z] > cap:
             report(f"zone {z} has saturation {sat[z]}, above limits.max_saturation {cap}")
-    if stage != "texture_base":
-        return
-    zone = {p.index: me.materials[p.material_index].name[5:] for p in me.polygons}
-    faces = {}
+    floor = a.limits["min_zone_contrast"]
+    for z1, z2 in neighbours(a.mesh):
+        if z1 in luma and z2 in luma and abs(luma[z1] - luma[z2]) < floor:
+            report(f"neighbouring zones {z1} ({luma[z1]}) and {z2} ({luma[z2]}) differ by less than "
+                   f"{floor} luma — they merge at a squint")
+
+
+def neighbours(obj, gap=0.002):
+    """Sorted pairs of mesh zones that meet: across a shared edge, where their shells intersect, or where
+    one comes within gap × the mesh size of the other."""
+    me = obj.data
+    names = [m.name[5:] for m in me.materials]
+    pairs = set()
+    edge_zones = {}
     for p in me.polygons:
         for ek in p.edge_keys:
-            faces.setdefault(ek, set()).add(zone[p.index])
-    pairs = {tuple(sorted(z)) for z in faces.values() if len(z) == 2}
-    floor = a.limits["min_zone_contrast"]
-    for z1, z2 in sorted(pairs):
-        if z1 in luma and z2 in luma and abs(luma[z1] - luma[z2]) < floor:
-            r.warn(f"neighbouring zones {z1} ({luma[z1]}) and {z2} ({luma[z2]}) differ by less than "
-                   f"{floor} luma — they merge at a squint")
+            edge_zones.setdefault(ek, set()).add(p.material_index)
+    for zs in edge_zones.values():
+        if len(zs) > 1:
+            pairs.update((i, j) for i in zs for j in zs if i < j)
+    verts = [v.co.copy() for v in me.vertices]
+    by_zone = {}
+    for p in me.polygons:
+        by_zone.setdefault(p.material_index, []).append(p)
+    trees = {i: BVHTree.FromPolygons(verts, [tuple(p.vertices) for p in ps]) for i, ps in by_zone.items()}
+    corners = {i: {v for p in ps for v in p.vertices} for i, ps in by_zone.items()}
+    reach = gap * (max(obj.dimensions) or 1.0)
+    zones = sorted(trees)
+    for n, i in enumerate(zones):
+        for j in zones[n + 1:]:
+            if (i, j) in pairs:
+                continue
+            if trees[i].overlap(trees[j]) or any(trees[j].find_nearest(verts[v], reach)[0] is not None
+                                                 for v in corners[i]):
+                pairs.add((i, j))
+    return sorted(tuple(sorted((names[i], names[j]))) for i, j in pairs)

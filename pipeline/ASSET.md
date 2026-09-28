@@ -21,8 +21,9 @@ assets/<slug>/
 Stages run in order `model → rig → texture_base → texture_ref`. `rig` is skipped when `rig` is `"none"`.
 Each build opens the nearest upstream stage's `.blend`, runs `build/<stage>.py`, and saves `<stage>.blend`.
 Rebuilding a stage makes every later stage stale. `status` shows this; rebuild the stale stages in order.
-When `_kit` code or the spec (`asset.json`, its art guides' rules, the limits in force) changes after a stage
-was built, `status` says so. Run `verify` on that stage. IDENTICAL re-checks the stage under the current spec
+When a `_kit` module the stage's build script imports (directly or through other kit modules) or the spec
+(`asset.json`, its art guides' rules, the limits in force) changes after a stage was built, `status` says so.
+Re-running `check` on the same build keeps a stage's verification. Run `verify` on that stage. IDENTICAL re-checks the stage under the current spec
 and, if it passes, clears the flag. CHANGED means the stage must be rebuilt and reviewed again.
 
 ## Art guides
@@ -48,10 +49,11 @@ every approved piece that uses it.
 | `brief` | what the asset is, in the user's words plus any decisions | `""` |
 | `refs` | paths under `refs/`, each with what it shows | `[]` |
 | `art` | the art guide chain: `"<world>"`, `"<world>/<zone>"` or `"<world>/<zone>/<set>"` (ART.md) | none: no guides |
+| `budget_class` | a class in the guides' `budgets`; it supplies `tri_budget`, `texture_size` and its `limits` | none |
 | `rig` | `"none"`, `"humanoid"`, or `"custom: <skeleton in words>"` | `"none"` |
 | `texture_mode` | `"stylized"` (lighting painted into albedo) or `"pbr"` (engine lights it) | the world guide's, else chosen from the refs |
-| `tri_budget` | triangle ceiling for the low mesh | `3000` |
-| `texture_size` | square map size in px, a power of two | `1024` |
+| `tri_budget` | triangle ceiling for the low mesh | the budget class's, else `3000` |
+| `texture_size` | square map size in px, a power of two | the budget class's, else `1024` |
 | `height_m` | real-world height in metres (Z extent) | none |
 | `shots` | extra review cameras: `{"name", "target": [x,y,z], "from": [dx,dy,dz], "distance": m, "lens": mm}` | `[]` |
 | `limits` | overrides for check thresholds, each set deliberately and named in `brief` | `{}` |
@@ -61,10 +63,12 @@ Budget guide, when the world guide has no `budgets`: small prop 300–1.5k tris 
 
 `limits` keys: `max_tri_ratio` 0.15, `allow_open` false, `uv_overlap_ok` false, `min_uv_coverage` 0.35,
 `texel_density_tolerance` 2.0, `texel_density_px_per_m` none (a `[min, max]` range), `min_zone_contrast` 20
-(luma between neighbouring zones in the base texture), `albedo_luma` none (a `[min, max]` range for each
+(luma between neighbouring zones: across a shared edge, where shells intersect, or where one rests on
+another), `albedo_luma` none (a `[min, max]` range for each
 zone's mean albedo luma), `max_saturation` none (for each zone's mean albedo), `max_influences` 4,
-`max_bones` 80. The art guides set defaults over these, and `asset.json` overrides both. `albedo_luma` and
-`max_saturation` skip accent swatches; they FAIL at `texture_ref` and WARN at `texture_base`.
+`max_bones` 80. The art guides set defaults over these, the budget class's `limits` replace them, and
+`asset.json` overrides all three. `albedo_luma` and `max_saturation` skip accent swatches. All three zone
+limits FAIL at `texture_ref` and WARN at `texture_base`.
 
 ## Scene conventions
 
