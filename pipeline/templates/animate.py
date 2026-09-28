@@ -2,7 +2,8 @@
 `asset` predefined."""
 import animation
 
-# Named poses, shared by the clips that start or end in them. Signs come from build/rig.py's rig_test poses.
+# Named poses, shared by the clips that start or end in them. Take each sign from build/rig.py's rig_test,
+# whose first pose lowers the arms and then raises them overhead; the signs here fit one rig's bone rolls only.
 STAND = {"upper_arm.L": (0, 0, -60), "upper_arm.R": (0, 0, 60)}
 WAVE = {**STAND, "upper_arm.R": (0, 0, -40), "forearm.R": (90, 0, 0)}
 

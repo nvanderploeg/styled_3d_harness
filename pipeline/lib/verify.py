@@ -31,7 +31,7 @@ def snapshot(a):
         "starts": arr(me.polygons, "loop_start", 1, np.int64),
         "zone": arr(me.polygons, "material_index", 1, np.int64),
         "zones": [m.name for m in me.materials],
-        "edges": arr(me.edges, "vertices", 2, np.int64),
+        "edges": np.sort(arr(me.edges, "vertices", 2, np.int64).reshape(-1, 2), axis=1).ravel(),
         "seams": arr(me.edges, "use_seam", 1, bool),
         "uv": arr(me.uv_layers.active.data, "uv", 2, np.float64) if me.uv_layers else np.empty(0),
     }
@@ -61,11 +61,12 @@ def diff_snapshots(old, new):
 
 
 def verify(a, stage, run_stage):
-    """Rebuild `stage` from its upstream .blend and script into scratch space and diff it against the saved
-    stage. An IDENTICAL stage is checked again under the current spec; True when it is identical and passes."""
+    """Rebuild `stage` from its upstream .blend and script into a scratch folder in the asset and diff it
+    against the saved stage. An IDENTICAL stage is checked again under the current spec; True when it is
+    identical and passes."""
     bpy.ops.wm.open_mainfile(filepath=a.blend(stage))
     old = snapshot(a)
-    tmp = tempfile.mkdtemp(prefix=f"verify_{a.slug}_")
+    tmp = tempfile.mkdtemp(prefix=f"verify_{stage}_", dir=a.path())
     saved_textures = a.textures
     a.textures = lambda s: os.path.join(tmp, s) if s == stage else saved_textures(s)
     try:

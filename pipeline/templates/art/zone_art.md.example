@@ -62,14 +62,14 @@ built once, patched since, and never quite repaired.
 
 ## Wear
 
-- **Old and damp.** Moss gathers on tops, on north faces and where things meet the ground, painted onto
+- **Old and damp.** Moss gathers on tops, on faces turned from the key light and where things meet the ground, painted onto
   whatever it grows on. Grime streaks run down beneath every sill, beam and bracket.
 - **Patched in the village, broken outside it.** Village damage has been mended: boards nailed across splits,
   and a replacement plank lighter than its neighbours. Outside the village, things stay broken: missing boards,
   fallen stones, open roofs.
 - **Claw marks.** Worgen have tested every door and post. Three or four parallel gouges at `shape.claw_height`
-  are painted as dark lines with lit lips, and cut into the mesh only on large pieces.
-- **Cobwebs** fill high inside corners, painted as pale strokes that follow the corner.
+  are painted as dark lines with lit lips, and cut into the mesh only on pieces taller than 1.5 m.
+- **Cobwebs** fill a building's inside corners above head height, painted as pale strokes that follow the corner.
 - **Clean where the player acts.** Walkable tops, doorways and anything the player uses keep their shape, and
   wear goes on the faces around them.
 

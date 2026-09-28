@@ -75,8 +75,9 @@ def _flip(p):
     return (-p[0], p[1], p[2])
 
 
-def bind(a, max_influences=None, threshold=0.01):
-    """Parent the mesh to the rig with automatic (bone heat) weights, then clean them."""
+def bind(a, max_influences=None, threshold=0.01, skip=()):
+    """Parent the mesh to the rig with automatic (bone heat) weights, then clean them. Bones in skip take
+    no heat weights, so the extra chains `chain` weights afterwards don't pull on the body."""
     obj, arm = a.mesh, a.armature
     obj.vertex_groups.clear()
     for m in [m for m in obj.modifiers if m.type == "ARMATURE"]:
@@ -84,8 +85,15 @@ def bind(a, max_influences=None, threshold=0.01):
     for o in bpy.context.view_layer.objects:
         o.select_set(o in (obj, arm))
     bpy.context.view_layer.objects.active = arm
-    bpy.ops.object.parent_set(type="ARMATURE_AUTO")
-    clean(a, max_influences, threshold)
+    held = [b for b in arm.data.bones if b.name in skip and b.use_deform]
+    for b in held:
+        b.use_deform = False
+    try:
+        bpy.ops.object.parent_set(type="ARMATURE_AUTO")
+        clean(a, max_influences, threshold)
+    finally:
+        for b in held:
+            b.use_deform = True
 
 
 def clean(a, max_influences=None, threshold=0.01):
@@ -112,12 +120,33 @@ def clean(a, max_influences=None, threshold=0.01):
 
 
 def _select(obj, where):
-    """Vertex indices in a zone (by name) or passing a predicate on the vertex position."""
+    """Vertex indices in a zone (by name), passing a predicate on the vertex position, or given as a set."""
     if isinstance(where, str):
         slots = [m.name for m in obj.data.materials]
         idx = slots.index(f"zone_{where}")
         return {v for p in obj.data.polygons if p.material_index == idx for v in p.vertices}
+    if isinstance(where, (set, frozenset, list, tuple)):
+        return set(where)
     return {v.index for v in obj.data.vertices if where(v.co)}
+
+
+def shell(a, point):
+    """Vertex indices of the connected shell holding the vertex nearest point, for rigid or chain:
+    a buckle, a clasp or a bead that shares its zone with its neighbours."""
+    me = a.mesh.data
+    start = min(me.vertices, key=lambda v: (v.co - Vector(point)).length).index
+    links = {}
+    for e in me.edges:
+        i, j = e.vertices
+        links.setdefault(i, []).append(j)
+        links.setdefault(j, []).append(i)
+    found, todo = {start}, [start]
+    while todo:
+        for j in links.get(todo.pop(), []):
+            if j not in found:
+                found.add(j)
+                todo.append(j)
+    return found
 
 
 def _assign(obj, verts, weights_of):
@@ -131,8 +160,9 @@ def _assign(obj, verts, weights_of):
 
 
 def rigid(a, bone, where):
-    """Weight vertices fully to one bone: a zone name, or a predicate on the vertex position.
-    For parts that move as a solid (wheels, lids, armour plates)."""
+    """Weight vertices fully to one bone: a zone name, a predicate on the vertex position, or a vertex set
+    such as `shell` returns. For parts that move as a solid (wheels, lids, armour plates). It replaces
+    earlier weights, so a solid piece inside a chained part (a clasp in a braid) is weighted after `chain`."""
     verts = _select(a.mesh, where)
     _assign(a.mesh, verts, lambda i: {bone: 1.0})
     return len(verts)
@@ -142,7 +172,7 @@ def chain(a, bones, where):
     """Weight a hanging part along a chain of connected bones, root first: each vertex blends between the
     two bones whose middles it falls between along the chain, and between the root and the first bone's
     middle it blends into that bone's parent. For beards, cloaks, braids, hat tips and tails.
-    where is a zone name or a predicate, as in rigid."""
+    where selects vertices as in rigid."""
     obj, arm = a.mesh, a.armature
     verts = _select(obj, where)
     chain_bones = [arm.data.bones[n] for n in bones]
@@ -177,6 +207,44 @@ def chain(a, bones, where):
 
     _assign(obj, verts, weights_of)
     return len(verts)
+
+
+def mirror(a, source="L", tol=0.002):
+    """Copy the weights of the `source` side (.L, at +X) onto its mirror image, swapping .L and .R groups,
+    so bone heat's lopsided results come out symmetric. Vertices on the centre line keep their weights;
+    a vertex with no mirror within tol metres keeps its own."""
+    from mathutils.kdtree import KDTree
+    obj = a.mesh
+    verts = obj.data.vertices
+    sign = 1 if source == "L" else -1
+    other = "R" if source == "L" else "L"
+    kd = KDTree(len(verts))
+    for v in verts:
+        kd.insert(v.co, v.index)
+    kd.balance()
+
+    def swap(name):
+        for s, o in ((f".{source}", f".{other}"), (f".{other}", f".{source}")):
+            if name.endswith(s):
+                return name[:-len(s)] + o
+        return name
+
+    names = {g.index: g.name for g in obj.vertex_groups}
+    copied = []
+    for v in verts:
+        if v.co.x * sign >= -tol:
+            continue
+        _, i, d = kd.find(Vector((-v.co.x, v.co.y, v.co.z)))
+        if d > tol:
+            continue
+        copied.append((v.index, [(swap(names[g.group]), g.weight) for g in verts[i].groups]))
+    for idx, weights in copied:
+        for g in list(verts[idx].groups):
+            obj.vertex_groups[g.group].remove([idx])
+        for name, w in weights:
+            group = obj.vertex_groups.get(name) or obj.vertex_groups.new(name=name)
+            group.add([idx], w, "REPLACE")
+    return len(copied)
 
 
 def _fill_from_neighbours(obj, empty):

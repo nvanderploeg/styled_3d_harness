@@ -4,16 +4,18 @@ performed against. A pose maps bone name → (x, y, z) Euler degrees in the bone
 import math
 
 import bpy
-from mathutils import Vector
+from mathutils import Euler, Quaternion, Vector
 
 FPS = 30
 MAX_SLIDE = 0.01
+MAX_SINK = 0.02
 
 
 def settings(a):
-    """The spec's `animations`: fps, max_slide, props by name, and clips by name in spec order."""
+    """The spec's `animations`: fps, max_slide, max_sink, props by name, and clips by name in spec order."""
     spec = a.spec.get("animations") or {}
     return {"fps": spec.get("fps", FPS), "max_slide": spec.get("max_slide", MAX_SLIDE),
+            "max_sink": spec.get("max_sink", MAX_SINK),
             "props": spec.get("props", {}), "clips": {c["name"]: c for c in spec.get("clips", [])}}
 
 
@@ -37,30 +39,38 @@ def _local_rot(arm, pb, matrix):
     return tuple(math.degrees(x) for x in m.to_euler("XYZ"))
 
 
-def plant(a, pose, feet, flat=True):
-    """pose with each foot's two parent bones (thigh and shin) turned so the foot's head, the ankle, stays
-    where it is at rest; with flat, each foot also turns back to its rest orientation. The solve starts from
-    the pose's own thigh and shin, so for a deep bend key them pre-bent and turned out, and the knees track
-    over the feet. Use it on every key where a foot stays on the ground."""
+def reach(a, pose, targets):
+    """pose with each bone in targets {bone: world point} placed by turning its two parent bones (upper arm
+    and forearm, thigh and shin) so the bone's head lands on the point. The middle joint bends the way the
+    pose already bends it, so key the elbow or knee pre-bent toward where it should point."""
     arm = a.armature
     apply(arm, pose)
     solved, rigs = dict(pose), []
-    for foot in feet:
-        shin = arm.pose.bones[foot].parent
-        target = bpy.data.objects.new(f"plant_{foot}", None)
+    for bone, at in targets.items():
+        mid = arm.pose.bones[bone].parent
+        target = bpy.data.objects.new(f"reach_{bone}", None)
         bpy.context.scene.collection.objects.link(target)
-        target.location = arm.data.bones[foot].head_local
-        ik = shin.constraints.new("IK")
+        target.location = at
+        ik = mid.constraints.new("IK")
         ik.target, ik.chain_count, ik.use_tail = target, 2, True
-        rigs.append((target, shin, ik))
+        rigs.append((target, mid, ik))
     bpy.context.view_layer.update()
-    for _, shin, _ in rigs:
-        for pb in (shin.parent, shin):
+    for _, mid, _ in rigs:
+        for pb in (mid.parent, mid):
             solved[pb.name] = _with_rot(solved.get(pb.name, (0, 0, 0)), _local_rot(arm, pb, pb.matrix))
-    for target, shin, ik in rigs:
-        shin.constraints.remove(ik)
+    for target, mid, ik in rigs:
+        mid.constraints.remove(ik)
         bpy.data.objects.remove(target)
     apply(arm, solved)
+    return solved
+
+
+def plant(a, pose, feet, flat=True):
+    """pose with each foot's head, the ankle, held where it is at rest by `reach`; with flat, each foot also
+    turns back to its rest orientation. For a deep bend key the thighs and shins pre-bent and turned out, so
+    the knees track over the feet. Use it on every key where a foot stays on the ground."""
+    arm = a.armature
+    solved = reach(a, pose, {f: arm.data.bones[f].head_local for f in feet})
     if flat:
         for foot in feet:
             pb = arm.pose.bones[foot]
@@ -109,6 +119,73 @@ def clip(a, name, keys):
     bpy.context.scene.frame_set(1)
     apply(arm, {})
     return act
+
+
+def sample(keys, frames):
+    """Whole poses for frames 1..frames through keys [(frame, pose)], for adding per-frame motion such as
+    overlap before passing every frame to `clip`. Rotations blend as quaternions, so keys from `reach` or
+    `plant` and keys posed by hand turn the short way; every channel eases into its keys without overshoot."""
+    xs = [f for f, _ in keys]
+    parts = [{b: _split(v) for b, v in p.items()} for _, p in keys]
+    bones = {b for p in parts for b in p}
+    out = [{} for _ in range(frames)]
+    for b in bones:
+        rots = [p.get(b, ((0, 0, 0), (0, 0, 0)))[0] for p in parts]
+        locs = [p.get(b, ((0, 0, 0), (0, 0, 0)))[1] for p in parts]
+        quats, prev = [], None
+        for r in rots:
+            q = Euler([math.radians(x) for x in r], "XYZ").to_quaternion()
+            if prev is not None and q.dot(prev) < 0:
+                q.negate()
+            quats.append(q)
+            prev = q
+        last = None
+        for f in range(1, frames + 1):
+            q = Quaternion([_ease(xs, [qq[i] for qq in quats], f) for i in range(4)]).normalized()
+            e = q.to_euler("XYZ", last) if last is not None else q.to_euler("XYZ")
+            last = e
+            rot = tuple(math.degrees(x) for x in e)
+            loc = tuple(_ease(xs, [l[i] for l in locs], f) for i in range(3))
+            out[f - 1][b] = {"rot": rot, "loc": loc} if any(loc) else rot
+    return out
+
+
+def spring(drive, delay, hz=1.6, damping=0.45, fps=FPS):
+    """drive (one value per frame) followed `delay` frames late and loose: an underdamped spring, for a
+    hanging part's overlap. Add the difference from drive to the part's own channel."""
+    w, dt = 2 * math.pi * hz, 1 / fps
+    x, v, out = drive[0], 0.0, []
+    for f in range(len(drive)):
+        target = drive[max(0, f - delay)]
+        for _ in range(4):
+            acc = w * w * (target - x) - 2 * damping * w * v
+            v += acc * dt / 4
+            x += v * dt / 4
+        out.append(x)
+    return out
+
+
+def _split(v):
+    return (tuple(v.get("rot", (0, 0, 0))), tuple(v.get("loc", (0, 0, 0)))) if isinstance(v, dict) \
+        else (tuple(v), (0, 0, 0))
+
+
+def _ease(xs, ys, x):
+    """Fritsch–Carlson monotone cubic through (xs, ys) at x."""
+    n = len(xs)
+    if x <= xs[0]:
+        return ys[0]
+    if x >= xs[-1]:
+        return ys[-1]
+    d = [(ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]) for i in range(n - 1)]
+    m = [0.0] + [0.0 if d[i - 1] * d[i] <= 0 else
+                 3 * (d[i - 1] + d[i]) / ((2 * d[i] + d[i - 1]) / d[i - 1] + (d[i] + 2 * d[i - 1]) / d[i])
+                 for i in range(1, n - 1)] + [0.0]
+    k = max(i for i in range(n - 1) if xs[i] <= x)
+    h = xs[k + 1] - xs[k]
+    t = (x - xs[k]) / h
+    return ((2 * t ** 3 - 3 * t ** 2 + 1) * ys[k] + (t ** 3 - 2 * t ** 2 + t) * h * m[k]
+            + (-2 * t ** 3 + 3 * t ** 2) * ys[k + 1] + (t ** 3 - t ** 2) * h * m[k + 1])
 
 
 def current(arm):

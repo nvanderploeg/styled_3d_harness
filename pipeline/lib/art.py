@@ -19,7 +19,7 @@ SWATCH = {"color": None, "roughness": 0.8, "metallic": 0, "accent": False, "touc
 BUDGET = {"tri_budget", "texture_size", "limits"}
 HELPERS = {"painted_light": ("nodes", "Tree.painted_light"), "brush": ("nodes", "Tree.brush"),
            "make_high": ("modeling", "make_high")}
-PER_ASSET = {"top"}
+PER_ASSET = {"top", "normal"}
 FREE = {"scale", "shape", "kit"}
 TOP = {"texture_mode", "limits", "palette", "budgets"} | set(HELPERS) | FREE
 
@@ -202,28 +202,33 @@ def _check_palette(rules, files, limit_defaults):
     floor = limits.get("min_zone_contrast", limit_defaults["min_zone_contrast"])
     where = files[-1] if files else "palette"
     palette = rules.get("palette", {})
+    problems = []
     for name, s in palette.items():
         missing = [t for t in s.get("touches", []) if t not in palette]
         if missing:
-            raise SystemExit(f"{where}: palette.{name} touches {missing}, which no guide on the chain names; "
-                             "declare a pair on the swatch of the lower guide")
+            problems.append(f"palette.{name} touches {missing}, which no guide on the chain names; "
+                            "declare a pair on the swatch of the lower guide")
+        if "color" not in s:
+            problems.append(f"palette.{name} has no color")
+    if problems:
+        raise SystemExit("\n".join(f"{where}: {p}" for p in problems))
     for a, b, gap in touching(rules):
         if gap < floor:
-            raise SystemExit(f"{where}: palette {a} and {b} touch but sit {gap:.0f} luma apart, under "
-                             f"limits.min_zone_contrast {floor}; move one, or keep them off a shared edge")
+            problems.append(f"palette {a} and {b} touch but sit {gap:.0f} luma apart, under "
+                            f"limits.min_zone_contrast {floor}; move one, or keep them off a shared edge")
     for name, s in palette.items():
-        if "color" not in s:
-            raise SystemExit(f"{where}: palette.{name} has no color")
         if s.get("accent"):
             continue
         c = rgb(s["color"])
         y, sat = float(luma(c)), float(saturation(c))
         if band and not band[0] <= y <= band[1]:
-            raise SystemExit(f"{where}: palette.{name} {s['color']} has luma {y:.0f}, outside limits.albedo_luma "
-                             f"{band}; move it inside or mark it an accent")
+            problems.append(f"palette.{name} {s['color']} has luma {y:.0f}, outside limits.albedo_luma "
+                            f"{band}; move it inside or mark it an accent")
         if cap is not None and sat > cap:
-            raise SystemExit(f"{where}: palette.{name} {s['color']} has saturation {sat:.2f}, above "
-                             f"limits.max_saturation {cap}; mute it or mark it an accent")
+            problems.append(f"palette.{name} {s['color']} has saturation {sat:.2f}, above "
+                            f"limits.max_saturation {cap}; mute it or mark it an accent")
+    if problems:
+        raise SystemExit("\n".join(f"{where}: {p}" for p in problems))
 
 
 def dark_to_light(rules):

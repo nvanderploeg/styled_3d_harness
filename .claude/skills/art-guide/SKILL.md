@@ -23,7 +23,7 @@ Done when every section has traits, each traced to the user, a ref or a source, 
 
 ## 3. Write it
 
-Copy the example for your layer to its place in `assets/_art/` and rewrite every section:
+Copy the example for your layer to its place in `assets/_art/`, replace its opening paragraph with one saying what this guide covers, and rewrite every section:
 
 - **Leading words first.** The one-line Style, Mood or Set holds them, and every rule below unpacks them.
 - **Observable rules.** Each rule names something a reviewer can point at on a review sheet, like "every long edge bows or tapers".

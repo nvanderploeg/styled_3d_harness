@@ -15,7 +15,8 @@ Ranked: when two rules pull apart, the higher pillar wins.
 1. **Readable.** Silhouette and value say what a thing is from across the zone, before any texture detail. What
    the player acts on (a door, a ledge, a lever) is the clearest read in view.
 2. **Chunky.** Parts are thicker, heavier and fewer than real ones: posts, rims, hinges and trims run
-   `shape.thickness` times their real size, and objects sit wide and low, planted on the ground.
+   `shape.thickness` times their real size (a fence post 10 cm across, a door 5 cm thick, a hinge strap
+   4 cm wide), and objects sit wide and low, planted on the ground.
 3. **Hand-built.** Nothing looks machine-made. Every long edge bows or tapers, every row of repeats varies,
    and every corner is rounded.
 4. **Painted.** Light, shadow and material are painted into the albedo in broad strokes, so a texture reads as
@@ -30,7 +31,7 @@ Ranked: when two rules pull apart, the higher pillar wins.
 - **Taper and flare.** Uprights widen toward the base, and roofs and caps flare at their eaves, so things look
   heavy and stable.
 - **Bowed and leaning.** Long edges bow by `shape.bow` of their length, and uprights lean by up to
-  `shape.lean_deg`. Repeated parts (planks, slates, spokes) vary in angle and spacing.
+  `shape.lean_deg`. Repeated parts (planks, slates, spokes) vary by up to 3° in angle and 10% in spacing.
 - **Rounded edges.** `make_high` rounds every hard edge at one width for the whole game, so an edge reads the
   same on a crate and on a castle. Blades and deliberate spikes stay sharp.
 
@@ -68,11 +69,11 @@ Ranked: when two rules pull apart, the higher pillar wins.
 How each material reads in every zone. The zone and set guides give its colours.
 
 - **Wood.** Long strokes along the grain, a dark gap between boards, lighter chipped edges, and at most three
-  big knots per board. End grain shows its rings.
+  knots per board, each about a third of the board's width. End grain shows its rings.
 - **Stone.** Chunky blocks, each with a lit top edge and a shadowed base, chipped corners, and mortar recessed
   dark between them.
-- **Metal.** A dark base with sharp, bright highlights painted along its edges. Rivets and nail heads are big
-  dots, each with its own highlight. Metallic stays 0, because the shine is painted.
+- **Metal.** A base on its swatch, dark against the sharp, bright highlights painted along its edges. Rivets
+  and nail heads are big dots, each with its own highlight. Metallic stays 0, because the shine is painted.
 - **Plaster.** Soft, mottled mid tones, stains running down from whatever sits above it, and cracks with a lit
   lip.
 - **Cloth and leather.** Big folds with a painted shadow inside each, and a trim band at every hem.

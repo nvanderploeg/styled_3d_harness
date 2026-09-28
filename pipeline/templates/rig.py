@@ -12,7 +12,7 @@ bones = [
     # {"name": "arm.L", "head": (...), "tail": (...), "parent": "spine"},   # .L bones mirror to .R
 ]
 rigging.build(asset, bones)
-rigging.bind(asset)
+rigging.bind(asset)  # skip=[...] names the extra chain bones, which rigging.chain weights below
 # rigging.rigid(asset, "lid", "trim")  # solid parts: one bone, full weight
 # rigging.chain(asset, ["beard_1", "beard_2"], "beard")  # hanging parts: blended along their own chain
 rigging.test_action(asset, [

@@ -10,6 +10,7 @@ import art
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ASSETS = os.environ.get("ASSETS_DIR") or os.path.join(REPO, "assets")
 KIT = os.path.join(ASSETS, "_kit")
+LIB = os.path.dirname(os.path.abspath(__file__))
 ART = os.path.join(ASSETS, "_art")
 
 STAGES = ("model", "rig", "texture_base", "texture_ref", "animate")
@@ -117,6 +118,10 @@ class Asset:
                 raise SystemExit(f"zone '{zone}' needs a colour: add it to the build script's table "
                                  "or to a guide's palette")
             table[zone] = (s["color"], s["roughness"], s["metallic"]) if s else local[zone]
+        extra = sorted(set(local) - set(table))
+        if extra:
+            raise SystemExit(f"the build script's table names {extra}, which the mesh has no zone for; "
+                             f"the zones are {sorted(table)}")
         return table
 
     @property
@@ -187,9 +192,9 @@ def new(slug):
     print(f"asset: {d}")
 
 
-def kit_modules(script):
-    """Paths of the _kit modules a build script imports, directly or through other kit modules.
-    Only `import x` and `from x import y` statements count."""
+def build_modules(script):
+    """Paths of the pipeline/lib and _kit modules a build script imports, directly or through each other,
+    resolved in the build's order: pipeline/lib first. Only `import x` and `from x import y` statements count."""
     found, todo = set(), [script]
     while todo:
         path = todo.pop()
@@ -205,10 +210,13 @@ def kit_modules(script):
             else:
                 continue
             for name in names:
-                mod = os.path.join(KIT, name.split(".")[0] + ".py")
-                if os.path.exists(mod) and mod not in found:
-                    found.add(mod)
-                    todo.append(mod)
+                for home in (LIB, KIT):
+                    mod = os.path.join(home, name.split(".")[0] + ".py")
+                    if os.path.exists(mod):
+                        if mod not in found:
+                            found.add(mod)
+                            todo.append(mod)
+                        break
     return sorted(found)
 
 
@@ -229,8 +237,10 @@ def status(a):
         else:
             state = "pass" if rep["pass"] else f"FAIL ({len(rep['fail'])})"
             since = max(mtime, rep.get("verified", 0.0))
-            kit = [os.path.basename(m) for m in kit_modules(script) if os.path.getmtime(m) > since]
-            changed = [f"_kit ({', '.join(kit)})"] if kit else []
+            moved = [m for m in build_modules(script) if os.path.getmtime(m) > since]
+            changed = [f"{label} ({', '.join(os.path.basename(m) for m in moved if os.path.dirname(m) == home)})"
+                       for label, home in (("pipeline/lib", LIB), ("_kit", KIT))
+                       if any(os.path.dirname(m) == home for m in moved)]
             if rep.get("spec") != a.fingerprint(s):
                 changed.append("spec")
             if changed:

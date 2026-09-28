@@ -1,6 +1,6 @@
 # styled_3d_harness
 
-Claude Code skills that make game-ready 3D assets in Blender, from a brief and reference images to a verified glTF.
+Claude Code skills that make placeholder 3D game assets in Blender, from a brief and reference images to a verified glTF.
 
 | skill | invoked | does |
 |---|---|---|
@@ -14,6 +14,13 @@ Claude Code skills that make game-ready 3D assets in Blender, from a brief and r
 
 Every stage is a Blender build script under `assets/<slug>/build/`. `pipeline/asset build` runs it, checks the result
 against hard limits, and renders a review sheet. See [pipeline/ASSET.md](pipeline/ASSET.md) for the asset contract.
+
+## Purpose
+
+This is an R&D project. It explores how far an agent can get through a game-asset pipeline, and what
+structure (art guides, checks, review sheets) keeps its output consistent. What it makes are placeholders:
+stand-ins for blockouts, prototypes and testing a level before the real art exists. It is not meant to replace
+artists or their work, and its assets are not meant to ship in their place.
 
 ## Setup
 
@@ -42,7 +49,7 @@ pipeline/asset art azeroth/duskwood/human_village     # one chain's guides in re
 Sets of pieces share a set guide, and their generator and recipes in `assets/_kit/`. Two commands keep them honest:
 
 ```
-pipeline/asset verify castle_platform_cross texture_ref     # rebuild in scratch space, diff against the approved stage
+pipeline/asset verify castle_platform_cross texture_ref     # rebuild beside the asset, diff against the approved stage
 pipeline/asset compare texture_ref castle_platform_straight castle_platform_cross   # zone brightness across the set
 ```
 

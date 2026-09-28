@@ -18,7 +18,7 @@ This stage builds on `texture_base.blend`. If that stage isn't built, run the `t
 
 ## 2. Read the references into recipe cards
 
-Read every reference image, and every guide `pipeline/asset art <slug>` lists: the world's painting and material rules, the zone's palette, light and wear, and the set's material notes. Write one card per zone:
+Read every reference image, and every guide `pipeline/asset art <slug>` lists: the world's painting and material rules, the zone's palette, light and wear, and the set's material notes. Write one card per zone in `build/cards.md`, or for a piece of a set in `assets/_kit/<set>_cards.md` beside its recipes:
 
 - **Palette.** 3–5 sRGB hex values (shadow, mid, light, accent) built around the zone's swatch when the palette has one, each picked from a named ref or guide.
 - **Pattern.** What repeats (grain, planks, scales, weave), its size in metres on this asset, and which way it runs.

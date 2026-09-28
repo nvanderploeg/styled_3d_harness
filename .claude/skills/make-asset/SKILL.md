@@ -25,7 +25,7 @@ Take the stages in the order `pipeline/asset status <slug>` lists them, skipping
 
 1. **Dispatch** a general-purpose `Agent` with this brief:
 
-   > Use the `<skill>` skill (invoke it with the Skill tool) on asset `<slug>` in `<repo path>`. Work until its completion criterion holds. Keep scratch files under `<scratchpad>/<slug>-<stage>/`. Report: the final check output, the review sheet paths, every judgement call you made, and anything you could not match.
+   > Use the `<skill>` skill (invoke it with the Skill tool) on asset `<slug>` in `<repo path>`. Work until its completion criterion holds. Keep scratch files under `<scratchpad>/<slug>-<stage>/`, and name scripts `<slug>_<purpose>.py` so none shadows a Python module. Change `asset.json` only where the skill says to. Report: the final check output, the review sheet paths, every judgement call you made, each change to `asset.json`, and anything you could not match.
 
    A fresh agent per stage keeps each stage's attention on its own criterion, and keeps renders out of your context. Without an Agent tool, invoke the stage's skill yourself and keep the same gate.
 

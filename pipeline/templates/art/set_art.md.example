@@ -53,7 +53,7 @@ Each mesh zone takes the swatch of its name. The zone guide supplies `iron`, `mo
                         "touches": ["planks", "plaster", "stone", "roof", "glow"]},
              "planks": {"color": "#664f3d", "roughness": 0.85, "touches": ["iron", "stone"]},
              "plaster": {"color": "#9a9286", "roughness": 0.95, "touches": ["stone", "roof", "iron"]},
-             "stone": {"color": "#75726b", "roughness": 0.9, "touches": ["roof", "iron", "earth"]},
+             "stone": {"color": "#6f7278", "roughness": 0.9, "touches": ["roof", "iron", "earth"]},
              "roof": {"color": "#4a5266", "roughness": 0.8}}}
 ```
 
@@ -75,13 +75,13 @@ Where the zone's wear lands on this set:
   stay whole, because they carry the roof's silhouette.
 - **Plaster** breaks away at panel corners to show diagonal lath strips beneath it, and the frame around it
   stays whole.
-- **Board ends** rot into a darker, rougher band with a chipped, rounded end.
+- **Board ends** rot into a darker, rougher band and break off in one or two flat bites.
 - **Claw marks** go on doors, shutters and corner posts.
 - **Doors, thresholds and steps** stay whole and square, for gameplay.
 
 ## Pieces
 
-Build them in this order. The lamppost leads because it carries iron, timber, stone and glow in one small piece.
+Build them in this order. The lamppost leads because it carries iron, stone and glow in one small piece.
 
 | piece | budget class | what it is |
 |---|---|---|

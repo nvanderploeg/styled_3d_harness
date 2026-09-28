@@ -27,7 +27,7 @@ Copy `pipeline/templates/model.py` to `build/model.py` and read the docstrings i
 
 For a piece of a set, write the geometry as a function of the piece's parameters in `assets/_kit/` (ASSET.md, *Sets*). `build/model.py` is then one call to it.
 
-Add `shots` to `asset.json` for what the sheet tiles are too small to judge: the gameplay camera from the refs, joints, damaged edges.
+Add `shots` to `asset.json` for what the sheet tiles are too small to judge: the gameplay camera, joints, damaged edges. Take the gameplay camera from the refs, or else the brief. With neither, frame the asset as a third-person camera would see it, about 4 m back and 30° above, and report that camera as a judgement call.
 
 Run `pipeline/asset build <slug> model`. Fix every `FAIL`, and every `WARN` too unless you can say why it's harmless for this asset. Then read `review/model.png`, `review/model_uv.png` and `review/model_shots.png` and hold them to the rules below and the guides' shape rules. For each reference, compare its silhouette to the matching tile.
 
@@ -39,7 +39,7 @@ Done when the check passes, every rule below holds in the sheets, and for each v
 - **Edge flow follows form.** Loops ring cylinders and limbs and run along creases. A spiral or a loop that dead-ends in the middle of a surface means the part was built wrong: rebuild it rather than patching.
 - **Deforming meshes** (`rig` is not `"none"`): at least three loops across every joint the rig will bend, spaced evenly and perpendicular to the bend. Anything that bends is one connected surface. Model in the rest pose the rig expects: a humanoid faces −Y in an A-pose, or a T-pose when the request or a guide names one (rig-asset's HUMANOID.md). A part that will swing on its own bones (a beard, a cloak, a hat tip) takes three loops across it at each joint of its chain, like a limb.
 - **Static meshes** may be separate intersecting shells (bands over a barrel, a buckle on a strap). Each shell is closed, and that's cheaper than merging them.
-- **Even density.** Neighbouring quads stay roughly square and similar in size unless curvature asks for more loops.
+- **Even density.** Within a part, neighbouring quads stay roughly square and similar in size unless curvature asks for more loops. A loop still has to earn its place by the silhouette rule, so a flat part may be a few large quads.
 
 ## Damage rules
 
@@ -52,6 +52,7 @@ Damage means crumble, chips, breaks and wear cut into the mesh. The zone and set
 
 ## UV rules
 
-- **Seams** go on hard edges (`unwrap` marks these) and where they'll be seen least: bottoms, backs, insides, under overlapping parts. A cylinder gets one seam on its least visible side. Mark any extra seam in the script (`edge.seam = True` in bmesh) before `unwrap`.
+- **Seams** go on hard edges (`unwrap` marks these) and where they'll be seen least: bottoms, backs, insides, under overlapping parts. A cylinder gets one seam on its least visible side (`lathe`'s `seam_deg`), and a round part with few sides goes in `finalize`'s `smooth` so its sides aren't seamed as hard edges. Mark any extra seam in the script (`edge.seam = True` in bmesh) before `unwrap`.
 - **Texel density** stays uniform; the check enforces it. Scale an island up only for a deliberate reason, and record it in `limits.texel_density_tolerance` and `brief`. When the limits in force carry a `texel_density_px_per_m` band, pick `texture_size` to land in it.
+- **Coverage.** When many small parts leave UV coverage under `limits.min_uv_coverage`, `unwrap`'s `pad_px` may drop to 4 at a `texture_size` of 512 or less. If it still falls short, lower `limits.min_uv_coverage` in `asset.json` and report it as a judgement call.
 - **Overlap** (stacked or mirrored islands) only when the brief accepts identical texturing on both sides. Set `limits.uv_overlap_ok` to allow it.

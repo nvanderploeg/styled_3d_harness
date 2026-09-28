@@ -191,7 +191,9 @@ def uv_checks(a, r):
         unsplit = sum(1 for i, d in enumerate(sharp.data) if d.value and i not in seams
                       and not me.edges[i].is_loose)
         if unsplit:
-            r.warn(f"{unsplit} hard edges are not UV seams — normal-map bakes will show lines there")
+            r.warn(f"{unsplit} hard edges are not UV splits — normal-map bakes will show lines there. A seam edge "
+                   "splits only when an end meets another seam or the mesh boundary: join lone seams to one, "
+                   "or soften the edge")
 
 
 def rig_checks(a, r):
@@ -239,6 +241,8 @@ REQUIRED_MAPS = {"texture_base": ["albedo", "orm"], "texture_ref": ["albedo", "o
 
 
 def texture_checks(a, r, stage):
+    r.require(a.spec["texture_mode"] in ("stylized", "pbr"),
+              f"texture_mode is {a.spec['texture_mode']!r}: set 'stylized' or 'pbr' in asset.json or the world guide")
     size = a.spec["texture_size"]
     me = a.mesh.data
     tri_uv, _ = uvmath.triangles(me)
@@ -287,18 +291,23 @@ def texture_checks(a, r, stage):
 
 
 def zone_checks(a, r, stage, albedo, tri_uv, size):
-    """zone_luma and zone_saturation: each zone's mean albedo as sRGB luma (0–255) and HSV saturation;
-    set pieces compare zone_luma. limits.albedo_luma and limits.max_saturation bound every zone whose
-    swatch is not an accent, and neighbouring zones closer than limits.min_zone_contrast will not separate
-    at a squint. All three FAIL on texture_ref and WARN on texture_base."""
+    """zone_luma and zone_saturation: each zone's mean albedo as sRGB luma (0–255) and HSV saturation,
+    over its faces that don't point down (all its faces when every one does); set pieces compare zone_luma.
+    limits.albedo_luma and limits.max_saturation bound every zone whose swatch is not an accent, and
+    neighbouring zones closer than limits.min_zone_contrast will not separate at a squint. All three FAIL on
+    texture_ref and WARN on texture_base."""
     me = a.mesh.data
     mats = np.empty(len(me.loop_triangles), np.int32)
     me.loop_triangles.foreach_get("material_index", mats)
+    normals = np.empty(len(me.loop_triangles) * 3)
+    me.loop_triangles.foreach_get("normal", normals)
+    seen = normals.reshape(-1, 3)[:, 2] >= -0.5
     res = min(size, 1024)
     step = size / res
     luma, sat = {}, {}
     for i, m in enumerate(me.materials):
-        mask = uvmath.raster(tri_uv[mats == i], res) > 0
+        tris = (mats == i) & seen if ((mats == i) & seen).any() else mats == i
+        mask = uvmath.raster(tri_uv[tris], res) > 0
         if not mask.any():
             continue
         ys, xs = np.nonzero(mask)
@@ -356,13 +365,14 @@ def neighbours(obj, gap=0.002):
 
 
 ROT_TOL, LOC_TOL = math.radians(0.5), 0.001
+POP_ROT, POP_LOC = math.radians(20), 0.02
 
 
 def animate_checks(a, r):
     """Every clip in the spec's animations: its action exists and spans frames 1 to `frames`; it turns bones
     and moves only unconnected ones; a `loop` ends where it starts; `from` and `to` meet their clips'
     ends; `planted` bones stay within max_slide of where the clip starts them; the mesh stays above
-    the ground."""
+    the ground and within max_sink of a prop's surface. A channel whose speed jumps between frames is a pop."""
     arm, obj = a.armature, a.mesh
     if not r.require(arm is not None, f"no armature named '{a.slug}_rig'"):
         return
@@ -384,13 +394,18 @@ def animate_checks(a, r):
             r.require(prop != "scale", f"clip '{name}' scales {bone} — engines retarget rotation and root motion only")
             r.require(prop != "location" or not b.use_connect,
                       f"clip '{name}' moves {bone}, which is connected to its parent — turn it instead")
+    hand_offs = []
     for name, c in clips.items():
         act = acts[name]
         if act is None:
             continue
+        pop = _worst_pop(act)
+        if pop:
+            r.warn(f"clip '{name}' pops: {pop} — check for a flipped solve or a missing breakdown")
         if c.get("loop"):
             gap = _pose_gap(act, 1, act, c["frames"])
             r.require(not gap, f"loop '{name}' ends away from its start: {gap}")
+            hand_offs.append(f"{name} loops")
         for key, mine, theirs in (("from", 1, "last"), ("to", c["frames"], "first")):
             other = c.get(key)
             if other is None:
@@ -401,30 +416,68 @@ def animate_checks(a, r):
             gap = _pose_gap(act, mine, acts[other], frame)
             r.require(not gap, f"clip '{name}' {'starts' if key == 'from' else 'ends'} away from the {theirs} frame "
                                f"of '{other}': {gap}")
+            pair = f"{other} → {name}" if key == "from" else f"{name} → {other}"
+            if pair not in hand_offs:
+                hand_offs.append(pair)
+    boxes = [(n, np.array(p["at"], float) - [p["size"][0] / 2, p["size"][1] / 2, 0],
+              np.array(p["at"], float) + [p["size"][0] / 2, p["size"][1] / 2, p["size"][2]])
+             for n, p in s["props"].items()]
     arm.animation_data_create()
-    slides, lows = {}, {}
+    slides, lows, sinks = {}, {}, {}
     dg = bpy.context.evaluated_depsgraph_get()
     for name, c in clips.items():
         act = acts[name]
         if act is None:
             continue
         arm.animation_data.action = act
-        start, slide, low = {}, 0.0, float("inf")
+        start, slide, low, sink = {}, 0.0, float("inf"), {}
         for f in range(1, c["frames"] + 1):
             bpy.context.scene.frame_set(f)
             for bone in c.get("planted", []):
                 p = arm.pose.bones[bone].head.copy()
                 slide = max(slide, (p - start.setdefault(bone, p)).length)
             if f % 5 == 1 or f == c["frames"]:
-                ev = obj.evaluated_get(dg)
-                low = min(low, min(v.co.z for v in ev.data.vertices))
+                ev = obj.evaluated_get(dg).data
+                co = np.empty(len(ev.vertices) * 3)
+                ev.vertices.foreach_get("co", co)
+                co = co.reshape(-1, 3)
+                low = min(low, float(co[:, 2].min()))
+                for prop, lo, hi in boxes:
+                    depth = np.minimum(co - lo, hi - co).min(axis=1)
+                    sink[prop] = max(sink.get(prop, 0.0), float(depth.max()))
         slides[name], lows[name] = round(slide, 4), round(low, 4)
+        sinks[name] = {prop: round(d, 4) for prop, d in sink.items()}
         r.require(slide <= s["max_slide"], f"clip '{name}' slides a planted bone {slide * 100:.1f} cm "
                                            f"(max_slide {s['max_slide'] * 100:.1f} cm) — plant it on every key")
         r.require(low >= -LOC_TOL * 10, f"clip '{name}' sinks the mesh {-low * 100:.1f} cm below the ground")
+        for prop, d in sink.items():
+            r.require(d <= s["max_sink"], f"clip '{name}' sinks the mesh {d * 100:.1f} cm into prop '{prop}' "
+                                          f"(max_sink {s['max_sink'] * 100:.1f} cm)")
     arm.animation_data.action = None
     bpy.context.scene.frame_set(1)
-    r.metrics.update(clips={n: c["frames"] for n, c in clips.items()}, planted_slide_m=slides, lowest_z_m=lows)
+    r.metrics.update(clips={n: c["frames"] for n, c in clips.items()}, hand_offs=hand_offs,
+                     planted_slide_m=slides, lowest_z_m=lows, prop_sink_m=sinks)
+
+
+def _worst_pop(act):
+    """The channel of act whose speed changes most between two frames, when that change passes POP_ROT
+    (rotation) or POP_LOC (location); "" when none does."""
+    f0, f1 = (int(round(f)) for f in act.frame_range)
+    worst, where = 0.0, ""
+    for fc in act.fcurves:
+        rot = fc.data_path.endswith("rotation_euler")
+        v = np.array([fc.evaluate(f) for f in range(f0, f1 + 1)])
+        if len(v) < 3:
+            continue
+        acc = np.abs(v[2:] - 2 * v[1:-1] + v[:-2]) / (POP_ROT if rot else POP_LOC)
+        i = int(acc.argmax())
+        if acc[i] > max(worst, 1.0):
+            worst = acc[i]
+            bone = fc.data_path.removeprefix('pose.bones["').split('"]')[0]
+            d = acc[i] * (math.degrees(POP_ROT) if rot else POP_LOC * 100)
+            where = (f"{bone}[{fc.array_index}] changes speed by {d:.0f}{'°' if rot else ' cm'} per frame "
+                     f"at frame {f0 + i + 1}")
+    return where
 
 
 def _pose_gap(a1, f1, a2, f2):

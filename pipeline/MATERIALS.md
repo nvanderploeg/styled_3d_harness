@@ -20,5 +20,6 @@ The starting points for zone materials, in metallic–roughness PBR as glTF stor
 
 - **Metallic is 0 or 1.** Only the transition pixels between metal and non-metal (a worn edge, a rust patch's border) take values in between. Dirt, rust or paint lying on a metal is non-metal.
 - **PBR albedo** stays within 30–243 sRGB. It carries no shadows, highlights or AO; the engine and the ORM map add those.
-- **Stylized albedo** carries the lighting, so it may leave that range. Its ORM occlusion is white, so the engine doesn't darken it a second time.
+- **Stylized materials** paint their shine instead of rendering it: metallic 0 and roughness 0.7 or above, a metal reading as metal through its painted edges, unless the refs show real shine. A guide swatch's own values win.
+- **Stylized albedo** from `texture_ref` carries the lighting, so it may leave the PBR range. Its ORM occlusion is white, so the engine doesn't darken it a second time. `texture_base` albedo is flat in both modes and bakes AO into the ORM.
 - **Specular.** Core glTF has no specular map. Roughness sets the size and sharpness of the highlight, and non-metals reflect a fixed 4%. A reference that shows "specular" detail (wet streaks, polished wear) is a roughness pattern.

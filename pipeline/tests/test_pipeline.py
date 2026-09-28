@@ -21,13 +21,16 @@ sys.path.insert(0, os.path.join(HERE, "..", "lib"))
 import bmesh  # noqa: E402
 import bpy  # noqa: E402
 import numpy as np  # noqa: E402
+from mathutils import Matrix, Vector  # noqa: E402
 
 import asset as asset_mod  # noqa: E402
 import checks  # noqa: E402
 import imgio  # noqa: E402
+import modeling  # noqa: E402
 import nodes  # noqa: E402
 import review  # noqa: E402
 import rigging  # noqa: E402
+import verify  # noqa: E402
 import animation  # noqa: E402
 
 PLACES = {"world_art.md": "azeroth", "zone_art.md": "azeroth/duskwood",
@@ -138,7 +141,7 @@ def test_naming_a_budget_class_changes_the_fingerprint_only_through_its_values()
 
 # --- kit staleness
 
-def test_kit_modules_follow_imports_through_the_kit():
+def test_build_modules_follow_imports_through_the_kit():
     kit = asset_mod.KIT
     write(os.path.join(kit, "walls.py"), "import stone\nimport math\n")
     write(os.path.join(kit, "stone.py"), "from paint import ramp\n")
@@ -146,7 +149,7 @@ def test_kit_modules_follow_imports_through_the_kit():
     write(os.path.join(kit, "roofs.py"), "")
     script = os.path.join(ROOT, "piece", "build", "model.py")
     write(script, "import walls\nimport bpy\n")
-    found = [os.path.basename(p) for p in asset_mod.kit_modules(script)]
+    found = [os.path.basename(p) for p in asset_mod.build_modules(script)]
     assert found == ["paint.py", "stone.py", "walls.py"], found
 
 
@@ -167,6 +170,29 @@ def test_status_flags_only_the_kit_modules_a_stage_imports():
     assert "_kit (walls.py) changed" in status_lines(a)["model"]
 
 
+def test_status_flags_the_pipeline_lib_modules_a_stage_imports():
+    lib, real = os.path.join(ROOT, "lib"), asset_mod.LIB
+    write(os.path.join(lib, "nodes.py"), "import uvmath\n")
+    write(os.path.join(lib, "uvmath.py"), "")
+    write(os.path.join(lib, "rigging.py"), "")
+    write(os.path.join(asset_mod.KIT, "walls.py"), "import nodes\n")
+    a = new_asset("piece")
+    write(a.script("model"), "import walls\n")
+    write(a.blend("model"), "")
+    built = os.path.getmtime(a.blend("model"))
+    write(a.path("review", "model.json"), json.dumps({"pass": True, "built": built, "spec": a.fingerprint(),
+                                                      "fail": []}))
+    later = built + 10
+    asset_mod.LIB = lib
+    try:
+        os.utime(os.path.join(lib, "rigging.py"), (later, later))
+        assert status_lines(a)["model"] == "pass", status_lines(a)
+        os.utime(os.path.join(lib, "uvmath.py"), (later, later))
+        assert "pipeline/lib (uvmath.py) changed" in status_lines(a)["model"], status_lines(a)
+    finally:
+        asset_mod.LIB = real
+
+
 def test_a_recheck_of_the_same_build_keeps_its_verify_stamp():
     clear_scene()
     a = new_asset("crate")
@@ -184,6 +210,118 @@ def test_a_recheck_of_the_same_build_keeps_its_verify_stamp():
     assert "verified" not in a.report("model")
 
 
+# --- modelling
+
+def test_finalize_keeps_the_move_that_recentred_the_mesh():
+    clear_scene()
+    a = new_asset("post")
+    part = mesh_object("part", {"wood": [((1.0, 2.0, 0.5), (1.2, 2.4, 2.5))]})
+    with contextlib.redirect_stdout(io.StringIO()):
+        modeling.finalize(a, [part])
+    assert (a.shift - Vector((-1.1, -2.2, -0.5))).length < 1e-6, a.shift
+
+
+def test_make_high_rounds_edges_but_keeps_blades_sharp_and_faces_flat():
+    clear_scene()
+    a = new_asset("axe")
+    mesh_object("axe", {"haft": [((-0.5, -0.5, 0), (0.5, 0.5, 1))], "blade": [((2, 0, 0), (2.5, 0.05, 0.5))]})
+    high = modeling.make_high(a, bevel=0.05, segments=2, sharp_zones=["blade"])
+    me = high.data
+    blade = [v for v in me.vertices if v.co.x > 1.5]
+    assert len(blade) == 8, f"the blade was bevelled into {len(blade)} vertices"
+    assert len(me.vertices) > 16, "the haft was not bevelled"
+    worst = max(math.degrees(me.corner_normals[li].vector.angle(p.normal))
+                for p in me.polygons if p.normal.z > 0.999 and p.area > 0.5 and p.center.x < 1
+                for li in p.loop_indices)
+    assert worst < 0.5, f"the haft's flat top bends its normals by {worst:.1f}°"
+
+
+def test_lathe_caps_are_clean_quads_at_any_seam_angle():
+    clear_scene()
+    for segments, seam in ((4, 0.0), (8, 0.0), (8, 100.0), (16, 37.0)):
+        obj = modeling.lathe("post", [(0.1, 0.0), (0.1, 1.0)], segments=segments, seam_deg=seam)
+        me = obj.data
+        assert all(len(p.vertices) == 4 for p in me.polygons), (segments, seam)
+        worst = min(p.area for p in me.polygons)
+        assert worst > 0.2 * (2 * math.pi * 0.1 / segments) ** 2, (segments, seam, worst)
+        seam_edges = [e for e in me.edges if e.use_seam and abs(me.vertices[e.vertices[0]].co.z -
+                                                                 me.vertices[e.vertices[1]].co.z) > 0.5]
+        v = me.vertices[seam_edges[0].vertices[0]].co
+        assert abs(math.remainder(math.degrees(math.atan2(v.y, v.x)) - seam, 360)) < 1e-3, (seam, tuple(v))
+        bpy.data.objects.remove(obj)
+
+
+def test_finalize_keeps_smooth_zones_soft():
+    clear_scene()
+    a = new_asset("arm")
+    limb = modeling.lathe("limb", [(0.05, 0.0), (0.05, 0.6)], segments=8)
+    limb.data.materials.append(bpy.data.materials.new("zone_skin"))
+    with contextlib.redirect_stdout(io.StringIO()):
+        modeling.finalize(a, [limb], smooth=["skin"])
+    me = a.mesh.data
+    sides = [e for e in me.edges if abs(me.vertices[e.vertices[0]].co.z - me.vertices[e.vertices[1]].co.z) > 0.5]
+    assert sides and not any(me.attributes["sharp_edge"].data[e.index].value for e in sides)
+
+
+def test_unwrap_stops_on_islands_it_cannot_solve():
+    clear_scene()
+    a = new_asset("ball", texture_size=512)
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=8)
+    bpy.context.object.name = "ball"
+    for e in a.mesh.data.edges:
+        e.use_seam = False
+    rejects(lambda: modeling.unwrap(a, seams_from_sharp=False), "failed to solve 1 of 1")
+    me = a.mesh.data
+    for e in me.edges:
+        e.use_seam = all(abs(me.vertices[v].co.y) < 1e-6 and me.vertices[v].co.x >= -1e-6 for v in e.vertices)
+    with contextlib.redirect_stdout(io.StringIO()):
+        modeling.unwrap(a, seams_from_sharp=False)
+
+
+def test_verify_reads_an_edge_the_same_whichever_end_comes_first():
+    clear_scene()
+    a = new_asset("crate")
+    mesh_object("crate", {"wood": [((-0.5, -0.5, 0), (0.5, 0.5, 1))]})
+    before = verify.snapshot(a)
+    e = a.mesh.data.edges[0]
+    e.vertices = (e.vertices[1], e.vertices[0])
+    assert verify.diff_snapshots(before, verify.snapshot(a)) == []
+
+
+def test_a_sharpen_tag_reaches_the_texture_recipes():
+    clear_scene()
+    obj = mesh_object("probe", {"main": [((-0.5, -0.5, 0), (0, 0.5, 1)), ((0, -0.5, 0), (0.5, 0.5, 1))]})
+    me = obj.data
+    tag = me.attributes.new("fracture", "INT", "FACE")
+    for p in me.polygons:
+        tag.data[p.index].value = int(p.center.x > 0)
+    modeling.sharpen(obj, tag="fracture")
+    t = nodes.tree(me.materials[0])
+    emit = t.node("ShaderNodeEmission")
+    t.set(emit.inputs["Color"], t.attribute("fracture"))
+    t.nt.links.new(emit.outputs[0], next(n for n in t.nt.nodes if n.type == "OUTPUT_MATERIAL").inputs[0])
+    scene = bpy.context.scene
+    scene.render.engine = "CYCLES"
+    scene.cycles.samples = 4
+    scene.cycles.device = "CPU"
+    scene.world = bpy.data.worlds.new("black")
+    scene.view_settings.view_transform = "Standard"
+    scene.render.resolution_x = scene.render.resolution_y = 64
+    cam = bpy.data.objects.new("cam", bpy.data.cameras.new("cam"))
+    scene.collection.objects.link(cam)
+    cam.data.type = "ORTHO"
+    cam.data.ortho_scale = 1.2
+    cam.location = (0, -5, 0.5)
+    cam.rotation_euler = (np.pi / 2, 0, 0)
+    scene.camera = cam
+    out = os.path.join(ROOT, "tag.png")
+    scene.render.filepath = out
+    bpy.ops.render.render(write_still=True)
+    img = imgio.read(out)
+    left, right = img[32, 16, 0], img[32, 48, 0]
+    assert left < 0.05 and right > 0.95, (left, right)
+
+
 # --- zone contrast
 
 def test_neighbours_include_shells_that_intersect_or_rest_on_each_other():
@@ -195,6 +333,37 @@ def test_neighbours_include_shells_that_intersect_or_rest_on_each_other():
         "crate": [((2.0, 2.0, 0.0), (2.5, 2.5, 0.5))],          # standing apart
     })
     assert checks.neighbours(obj) == [("cloth", "top"), ("leg", "top")], checks.neighbours(obj)
+
+
+def test_a_texture_stage_needs_a_texture_mode():
+    clear_scene()
+    a = new_asset("crate", texture_size=64)
+    mesh_object("crate", {"wood": [((-0.5, -0.5, 0), (0.5, 0.5, 1))]}).data.uv_layers.new()
+    r = checks.Report()
+    checks.texture_checks(a, r, "texture_base")
+    assert any("texture_mode is None" in f for f in r.fails), r.fails
+    a.spec["texture_mode"] = "stylized"
+    r = checks.Report()
+    checks.texture_checks(a, r, "texture_base")
+    assert not any("texture_mode" in f for f in r.fails), r.fails
+
+
+def test_zone_luma_leaves_out_faces_that_point_down():
+    clear_scene()
+    a = new_asset("stone")
+    obj = mesh_object("stone", {"stone": [((-0.5, -0.5, 0), (0.5, 0.5, 1))]})
+    me = obj.data
+    uv = me.uv_layers.new()
+    for p in me.polygons:
+        u0 = 0.5 if p.normal.z < -0.5 else 0.0
+        for li, (du, dv) in zip(p.loop_indices, ((0, 0), (0.4, 0), (0.4, 0.4), (0, 0.4))):
+            uv.data[li].uv = (u0 + du + 0.05, dv + 0.05)
+    albedo = np.zeros((64, 64, 3))
+    albedo[:, :32] = 0.5
+    tri_uv, _ = checks.uvmath.triangles(me)
+    r = checks.Report()
+    checks.zone_checks(a, r, "texture_base", albedo, tri_uv, 64)
+    assert r.metrics["zone_luma"]["stone"] == 127.5, r.metrics["zone_luma"]
 
 
 # --- rigging
@@ -239,6 +408,50 @@ def test_a_chain_blends_a_hanging_part_from_its_parent_to_its_tip():
 
 
 
+
+def test_bind_leaves_skipped_chains_off_the_body():
+    clear_scene()
+    a = new_asset("gnome", rig="humanoid")
+    mesh_object("gnome", {"body": [((-0.2, -0.15, 0.0), (0.2, 0.15, 1.2))],
+                          "beard": [((-0.08, -0.3, 0.6), (0.08, -0.16, 1.0))]})
+    rigging.build(a, [
+        {"name": "root", "head": (0, 0, 0), "tail": (0, 0, 0.1), "deform": False},
+        {"name": "hips", "head": (0, 0, 0.1), "tail": (0, 0, 0.6), "parent": "root"},
+        {"name": "head", "head": (0, 0, 0.6), "tail": (0, 0, 1.2), "parent": "hips"},
+        {"name": "beard_1", "head": (0, -0.22, 1.0), "tail": (0, -0.22, 0.6), "parent": "head"},
+    ])
+    with contextlib.redirect_stdout(io.StringIO()):
+        rigging.bind(a, skip=["beard_1"])
+    g = a.mesh.vertex_groups.get("beard_1")
+    assert g is None or not any(e.group == g.index for v in a.mesh.data.vertices for e in v.groups)
+    assert a.armature.data.bones["beard_1"].use_deform
+
+
+def test_mirror_copies_one_sides_weights_onto_the_other():
+    clear_scene()
+    a = new_asset("pair", rig="humanoid")
+    obj = mesh_object("pair", {"body": [((-0.3, -0.1, 0), (0.3, 0.1, 0.2))]})
+    left, right, hips = (obj.vertex_groups.new(name=n) for n in ("thigh.L", "thigh.R", "hips"))
+    for v in obj.data.vertices:
+        (left if v.co.x > 0 else right).add([v.index], 0.9 if v.co.x > 0 else 0.4, "REPLACE")
+        hips.add([v.index], 0.1 if v.co.x > 0 else 0.6, "REPLACE")
+    rigging.mirror(a)
+
+    def weights(v):
+        return {obj.vertex_groups[g.group].name: round(g.weight, 3) for g in v.groups}
+    for v in obj.data.vertices:
+        want = {"thigh.L": 0.9, "hips": 0.1} if v.co.x > 0 else {"thigh.R": 0.9, "hips": 0.1}
+        assert weights(v) == want, (tuple(v.co), weights(v))
+
+
+def test_a_shell_picks_one_loose_part_for_rigid_weights():
+    clear_scene()
+    a = new_asset("braid", rig="humanoid")
+    obj = mesh_object("braid", {"hair": [((-0.05, -0.05, 0), (0.05, 0.05, 1)), ((0.2, -0.05, 0), (0.3, 0.05, 1))]})
+    clasp = rigging.shell(a, (0.25, 0, 0.5))
+    assert clasp == {v.index for v in obj.data.vertices if v.co.x > 0.1}, clasp
+    assert rigging.rigid(a, "braid_2", clasp) == 8
+
 # --- animation
 
 LEGS = {"clips": [], "props": {}}
@@ -282,8 +495,9 @@ def test_a_planted_clip_holds_its_feet_while_the_hips_drop():
     a = biped(clips=[{"name": "squat", "frames": 20, "loop": True, "planted": FEET}])
     animation.clip(a, "squat", [(1, {}), (10, SQUAT), (20, {})])
     r = animate_report(a)
-    assert not r.fails, r.fails
+    assert not r.fails and not r.warns, (r.fails, r.warns)
     assert r.metrics["planted_slide_m"]["squat"] <= 0.001, r.metrics
+    assert r.metrics["hand_offs"] == ["squat loops"], r.metrics
     a.armature.animation_data.action = bpy.data.actions["squat"]
     bpy.context.scene.frame_set(10)
     assert a.armature.pose.bones["hips"].head.z < 0.4, "the hips never dropped"
@@ -313,6 +527,46 @@ def test_the_check_holds_planted_feet_loops_and_hand_offs():
     assert "loop 'sink' ends away from its start" in fails, fails
     assert "ends away from the first frame of 'rise'" in fails, fails
     assert "scales hips" in fails, fails
+
+
+def test_the_check_fails_a_body_sunk_into_a_prop():
+    seat = {"size": [0.4, 0.2, 0.55], "at": [0, 0.25, 0.4]}   # behind the hips, from y 0.15
+    a = biped(clips=[{"name": "back", "frames": 10}], props={"seat": seat})
+    animation.clip(a, "back", [(1, {}), (10, {"hips": {"rot": (0, 0, 0), "loc": (0, 0, -0.12)}})])
+    r = animate_report(a)
+    assert any("5.0 cm into prop 'seat'" in f for f in r.fails), r.fails
+    a.spec["animations"]["max_sink"] = 0.06
+    assert not animate_report(a).fails
+
+
+def test_the_check_warns_of_a_pop():
+    a = biped(clips=[{"name": "twitch", "frames": 20}])
+    animation.clip(a, "twitch", [(1, {}), (10, {}), (11, {"hips": (60, 0, 0)}), (20, {"hips": (60, 0, 0)})])
+    r = animate_report(a)
+    assert any("'twitch' pops: hips[0]" in w for w in r.warns), r.warns
+
+
+def test_reach_lands_a_bone_on_its_target():
+    a = biped(clips=[])
+    at = Vector((0.1, -0.1, 0.2))
+    pose = animation.reach(a, {"shin.L": (20, 0, 0)}, {"foot.L": at})
+    animation.apply(a.armature, pose)
+    assert (a.armature.pose.bones["foot.L"].head - at).length < 0.005, a.armature.pose.bones["foot.L"].head
+
+
+def test_sample_eases_between_keys_the_short_way():
+    frames = animation.sample([(1, {"hips": (0, 0, 170)}), (11, {"hips": (0, 0, -170)})], 11)
+    turns = [f["hips"][2] % 360 for f in frames]
+    assert all(170 - 1e-4 <= z <= 190 + 1e-4 for z in turns), turns
+    ramp = animation.sample([(1, {"hips": (0, 0, 0)}), (11, {"hips": (40, 0, 0)}), (21, {"hips": (40, 0, 0)})], 21)
+    xs = [f["hips"][0] for f in ramp]
+    assert abs(xs[0]) < 1e-4 and abs(xs[10] - 40) < 1e-4 and max(xs) <= 40 + 1e-4, xs
+
+
+def test_spring_follows_late_and_settles():
+    out = animation.spring([0.0] * 5 + [1.0] * 60, delay=3)
+    assert all(abs(x) < 1e-9 for x in out[:8]) and out[8] > 0, out[:10]
+    assert abs(out[-1] - 1.0) < 0.02, out[-1]
 
 
 def test_only_a_rigged_asset_with_clips_has_an_animate_stage():
@@ -350,7 +604,38 @@ def test_model_review_leaves_the_low_mesh_showing_for_the_shots():
     assert not a.mesh.hide_render and a.high.hide_render
 
 
+def test_rig_review_draws_each_pose_and_leaves_the_rig_at_rest():
+    a = biped(clips=[])
+    rigging.test_action(a, [{"thigh.L": (-60, 0, 0)}, {"hips": (0, 0, 30)}])
+    scene = bpy.context.scene
+    scene.world = bpy.data.worlds.new("review")
+    cam = bpy.data.objects.new("cam", bpy.data.cameras.new("cam"))
+    scene.collection.objects.link(cam)
+    real = review.render
+    review.render = lambda scene: None
+    try:
+        tiles, frames = review.rig_tiles(a, scene, cam)
+    finally:
+        review.render = real
+    assert frames == [1, 11, 21] and len(tiles) == 3, frames
+    assert a.armature.animation_data.action is None
+    assert all(pb.matrix_basis == Matrix() for pb in a.armature.pose.bones)
+
+
 # --- painted light
+
+def test_node_helpers_take_nodes_and_non_colour_data():
+    clear_scene()
+    t = nodes.tree(bpy.data.materials.new("probe"))
+    width = t.math("MULTIPLY", t.noise(), 0.01)
+    line = t.band(t.noise(), width)
+    assert line.node.inputs["From Max"].is_linked, "band ignored a node width"
+    f = t.mix(0.0, 1.0, 0.5, data_type="FLOAT")
+    v = t.mix((0, 0, 0), (1, 1, 1), 0.5, data_type="VECTOR")
+    assert f.type == "VALUE" and v.type == "VECTOR", (f.type, v.type)
+    lit = t.painted_light((0.5, 0.5, 0.5, 1), normal=t.bump(t.noise()))
+    assert lit.node, "painted_light took no normal"
+
 
 def test_edge_paint_lights_convex_edges_and_darkens_intersections():
     """A block with a leg pushed up into it, seen from the front. The block's lower front edge is convex,

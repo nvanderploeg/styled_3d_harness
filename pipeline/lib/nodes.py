@@ -99,6 +99,10 @@ class Tree:
         concave = self.math("MAXIMUM", self.map_range(sign, 0.0, -0.03), self.math("SUBTRACT", 1.0, open_air))
         return self.math("MULTIPLY", bend, convex), self.math("MULTIPLY", bend, concave)
 
+    def attribute(self, name):
+        """A mesh attribute as a value, such as the face tag `modeling.sharpen` leaves (1 on tagged faces)."""
+        return self.node("ShaderNodeAttribute", attribute_type="GEOMETRY", attribute_name=name).outputs["Fac"]
+
     def height(self, lo=0.0, hi=1.0):
         """0 at z=lo rising to 1 at z=hi (object space, metres)."""
         z = self.node("ShaderNodeSeparateXYZ")
@@ -138,13 +142,15 @@ class Tree:
         self.set(n.inputs["Fac"], fac)
         return n.outputs["Color"]
 
-    def mix(self, a, b, fac, blend="MIX"):
-        n = self.node("ShaderNodeMix", data_type="RGBA", blend_type=blend, clamp_result=True)
+    def mix(self, a, b, fac, blend="MIX", data_type="RGBA"):
+        """a to b by fac. data_type is RGBA (with blend modes), FLOAT or VECTOR."""
+        kind = {"RGBA": "Color", "FLOAT": "Float", "VECTOR": "Vector"}[data_type]
+        n = self.node("ShaderNodeMix", data_type=data_type, blend_type=blend, clamp_result=data_type == "RGBA")
         sock = {s.identifier: s for s in n.inputs}
         self.set(sock["Factor_Float"], fac)
-        self.set(sock["A_Color"], a)
-        self.set(sock["B_Color"], b)
-        return next(s for s in n.outputs if s.identifier == "Result_Color")
+        self.set(sock[f"A_{kind}"], a)
+        self.set(sock[f"B_{kind}"], b)
+        return next(s for s in n.outputs if s.identifier == f"Result_{kind}")
 
     def bump(self, height, strength=0.3, distance=0.01):
         n = self.node("ShaderNodeBump", Strength=strength, Distance=distance)
@@ -159,8 +165,10 @@ class Tree:
         return n.outputs["X"], n.outputs["Y"], n.outputs["Z"]
 
     def band(self, d, width, soft=0.003):
-        """1 where distance d <= width, fading to 0 over soft: turns a distance field into a painted line."""
-        return self.map_range(d, width, width + soft, 1.0, 0.0)
+        """1 where distance d <= width, fading to 0 over soft: turns a distance field into a painted line.
+        width may be a node output, for a line that swells and thins."""
+        outer = self.math("ADD", width, soft) if isinstance(width, bpy.types.NodeSocket) else width + soft
+        return self.map_range(d, width, outer, 1.0, 0.0)
 
     def warp(self, vec, scale, amount):
         """vec pushed by up to amount/2 metres of noise, so ruled patterns wobble like hand-laid stone."""
@@ -266,15 +274,16 @@ class Tree:
 
     def painted_light(self, base, key=(0.4, -0.5, 0.75), wrap=0.35, shadow=(0.55, 0.55, 0.75),
                       light=(1.08, 1.04, 0.95), ao_distance=0.15, top=(0.0, 1.0), top_strength=0.15,
-                      edge_radius=0.0, edge_strength=0.35, edge_color=None):
+                      edge_radius=0.0, edge_strength=0.35, edge_color=None, normal=None):
         """base lit by a fixed key light with hue-shifted shadows, AO, a top-down gradient and
         optional edge paint — the hand-painted look. top is the (lo, hi) z range of the gradient.
         Within edge_radius, convex edges move edge_strength of the way to edge_color; concave creases
         and the seams where shells intersect lose the key light and sink a further edge_strength into
         the shadow colour, so they read darker than both faces they join. edge_color (linear RGB) None is the
-        zone's lit colour lifted halfway to the light tint."""
-        geo = self.node("ShaderNodeNewGeometry")
-        lam = self.math_v("DOT_PRODUCT", geo.outputs["Normal"], tuple(Vector(key).normalized()))
+        zone's lit colour lifted halfway to the light tint. normal (a node output, such as `bump`'s) replaces the
+        surface normal the key light reads."""
+        n = normal if normal is not None else self.node("ShaderNodeNewGeometry").outputs["Normal"]
+        lam = self.math_v("DOT_PRODUCT", n, tuple(Vector(key).normalized()))
         lit = self.map_range(lam, -wrap, 1.0)
         lit = self.math("MULTIPLY", lit, self.ao(ao_distance))
         if edge_radius > 0:

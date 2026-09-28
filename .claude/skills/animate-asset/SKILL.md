@@ -29,7 +29,9 @@ Copy `pipeline/templates/animate.py` to `build/animate.py` and read the docstrin
 - **Read the rig first.** `build/rig.py`'s `rig_test` poses show which axis and sign bend each joint which way, and HUMANOID.md says which way every humanoid joint folds. Take each rotation from there; a guessed sign bends a knee backwards.
 - **Named poses.** Write each pose that two clips share (`STAND`, `SEATED`) once, as a named dict, and start or end every clip that meets it on that name. Hand-offs then match by construction.
 - **Hips lead.** Move the whole body by the hips bone (`{"loc": ...}` in its local space; for an upright hips bone, local Y is up and local Z is forward), and let `planted` feet hold the legs. For a deep bend, pre-bend the knees and turn the thighs out in the key, so the leg solve starts from knees over the feet. Turn the spine, chest, neck and head to balance over the new support.
+- **Contact by `reach`.** A hand resting on a knee or pushing off a seat is placed with `animation.reach`, which lands the wrist on a world point, as `plant` does for feet.
 - **Key poses first.** Key the story poses (where each clip starts and ends), then the extremes (the lowest dip, the lean before rising), then the breakdowns that carry the arcs between them.
+- **Overlap on top.** `animation.sample` turns the keys into one pose per frame. Add each trailing part's lag from `animation.spring` on the channel it follows, then pass every frame to `clip`.
 
 Keep these rules in view on every clip:
 

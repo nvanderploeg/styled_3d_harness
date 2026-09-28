@@ -147,6 +147,20 @@ def test_touching_swatches_keep_the_contrast_floor():
     rejects(lambda: rules(ZONE), "list of swatch names")
 
 
+def test_every_palette_problem_is_reported_in_one_run():
+    write_guide(ZONE, "zone_art.md", {"limits": {"max_saturation": 0.45},
+                                      "palette": {"trunk": {"color": "#505050", "touches": ["soil", "moss"]},
+                                                  "soil": {"color": "#585858"}, "moss": {"color": "#545454"},
+                                                  "blood": {"color": "#a01010"}}})
+    try:
+        rules(ZONE)
+    except SystemExit as e:
+        msg = str(e.code)
+        assert "soil and trunk" in msg and "moss and trunk" in msg and "palette.blood" in msg, msg
+        return
+    raise AssertionError("expected a rejection")
+
+
 def test_the_examples_declare_their_touching_pairs():
     pairs = {(a, b) for a, b, _ in art.touching(rules())}
     assert ("planks", "timber") in pairs and ("earth", "stone") in pairs, "set swatches pair with zone swatches"
@@ -201,6 +215,7 @@ def test_zone_table_takes_swatches_and_fills_the_rest_locally():
     assert table == {"timber": ("#3f3129", 0.85, 0), "main": ("#808080", 0.9, 0)}
     rejects(lambda: a.zone_table({"main": ("#808080", 0.9, 0), "timber": ("#000000", 0.5, 0)}), "change it there")
     rejects(lambda: a.zone_table({}), "needs a colour")
+    rejects(lambda: a.zone_table({"main": ("#808080", 0.9, 0), "trim": ("#606060", 0.9, 0)}), "no zone for")
     bpy.data.objects.remove(obj)
 
 

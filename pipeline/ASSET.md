@@ -13,6 +13,7 @@ assets/<slug>/
   <stage>.blend          a stage's output, rebuilt from the previous stage's .blend + its script
   review/<stage>.png     contact sheet of renders
   review/<stage>_shots.png  the asset's `shots`, framed close-ups and gameplay cameras
+  review/<texture stage>_maps.png  the baked maps flat: albedo, occlusion, roughness, metallic, normal
   review/<stage>.json    the check report
   textures/<stage>/      <slug>_albedo.png (sRGB), <slug>_orm.png, <slug>_normal.png (Non-Color)
   export/<slug>.glb      the deliverable, plus export/textures/
@@ -22,8 +23,8 @@ Stages run in order `model → rig → texture_base → texture_ref → animate`
 and `animate` runs only on a rigged asset whose `animations` name clips.
 Each build opens the nearest upstream stage's `.blend`, runs `build/<stage>.py`, and saves `<stage>.blend`.
 Rebuilding a stage makes every later stage stale. `status` shows this; rebuild the stale stages in order.
-When a `_kit` module the stage's build script imports (directly or through other kit modules) or the spec
-(`asset.json`, its art guides' rules, the limits in force) changes after a stage was built, `status` says so.
+When a `pipeline/lib` or `_kit` module the stage's build script imports (directly or through other modules) or
+the spec (`asset.json`, its art guides' rules, the limits in force) changes after a stage was built, `status` says so.
 Re-running `check` on the same build keeps a stage's verification. Run `verify` on that stage. IDENTICAL re-checks the stage under the current spec
 and, if it passes, clears the flag. CHANGED means the stage must be rebuilt and reviewed again.
 
@@ -38,8 +39,10 @@ rules are in [ART.md](ART.md), and `pipeline/asset art <slug>` prints an asset's
 
 Pieces that belong together (a platform set, a wall kit, a family of props) share a set guide, and share code
 in `assets/_kit/`.
-The geometry generator and the zone recipes live there, and each piece's build script is one call with its own
-parameters. Kit modules are importable from every build script. Seed any randomness from the piece's own
+What the pieces share lives there: always the zone recipes, and a geometry generator when they share a shape
+(platforms, wall segments) rather than only materials (street props). Each piece's build script calls the kit with
+its own parameters. A recipe takes what varies by piece (its height, a seed, a mask's name) as arguments and reads
+nothing from another piece's scripts. Kit modules are importable from every build script. Seed any randomness from the piece's own
 parameters, so each piece rebuilds to the same result. Before accepting any change to kit code, run `verify` on
 every approved piece that uses it.
 
@@ -76,7 +79,7 @@ limits FAIL at `texture_ref` and WARN at `texture_base`.
 
 ```json
 "animations": {
-  "fps": 30, "max_slide": 0.01,
+  "fps": 30, "max_slide": 0.01, "max_sink": 0.02,
   "props": {"seat": {"size": [0.5, 0.45, 0.35], "at": [0, 0.3, 0]}},
   "clips": [
     {"name": "sit_down", "frames": 40, "to": "sit_idle", "planted": ["foot.L", "foot.R"], "brief": "..."},
@@ -92,8 +95,10 @@ limits FAIL at `texture_ref` and WARN at `texture_base`.
 - **Planted** bones hold still in world space for the whole clip, within `max_slide` metres (default 0.01).
   `animation.clip` re-solves each planted foot's leg on every frame.
 - **Props** are stand-in boxes, `at` their bottom centre, drawn in the review so contact can be judged: a seat,
-  a table edge, a door handle. They are not exported.
-- The check also fails a clip that scales a bone, moves a connected bone, or takes the mesh below the ground.
+  a table edge, a door handle. They are not exported. The mesh may sink into a prop by `max_sink` metres
+  (default 0.02), the give of a body resting on it.
+- The check also fails a clip that scales a bone, moves a connected bone, or takes the mesh below the ground,
+  and warns of a pop: a channel whose speed jumps by more than 20° or 2 cm per frame between two frames.
   Only the `animate` stage reads `animations`, so editing it leaves the other stages' specs unchanged.
 
 ## Scene conventions
@@ -130,8 +135,8 @@ ones a stage uses:
 
 - `modeling`: `lathe`, `mesh_object`, `quadify`, `footprint_outline`, `zone`, `finalize`, `sharpen`, `unwrap`,
   `make_high`
-- `rigging`: `section`, `build`, `bind`, `clean`, `rigid`, `chain`, `test_action`
-- `animation`: `clip`, `plant`, `apply`, `current`, `pose_at`, `props`, `settings`
+- `rigging`: `section`, `build`, `bind`, `clean`, `rigid`, `chain`, `shell`, `mirror`, `test_action`
+- `animation`: `clip`, `plant`, `reach`, `sample`, `spring`, `apply`, `current`, `pose_at`, `props`, `settings`
 - `nodes`: `tree(mat)` for shader-node shorthand, plus `srgb` for picking colours by eye. Its stylized patterns
   are `slabs`, `courses`, `cracks`, `by_facing`, `brush` and `painted_light`, built from `band`, `warp` and
   `cell_random`

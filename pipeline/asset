@@ -3,7 +3,8 @@
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 BLENDER="${BLENDER:-$HOME/opt/blender/blender}"
-NOISE='^(Color management|Read blend|Blender quit|Blender [0-9.]+ |INFO Draco|$)|\| INFO: '
+# The sampler warning is the exporter counting material.baked's one ORM image node once per channel.
+NOISE='^(Color management|Read blend|Blender quit|Blender [0-9.]+ |INFO Draco|$)|\| INFO: |\| WARNING: More than one shader node tex image'
 
 blend() {
   "$BLENDER" --background --factory-startup --quiet --python-exit-code 1 \

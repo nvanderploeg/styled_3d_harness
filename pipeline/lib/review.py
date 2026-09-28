@@ -46,11 +46,12 @@ def run(a, stage):
     if stage == "model":
         tiles = model_tiles(a, scene, cam)
         uv_layout(a, a.path("review", "model_uv.png"))
-        print(f"review: {out}  (tiles: {', '.join(SHEETS['model'])})")
+        names = SHEETS["model"] if a.high else SHEETS["model"][:-1]
+        print(f"review: {out}  (tiles: {', '.join(names)})")
         print(f"review: {a.path('review', 'model_uv.png')}  (grey islands, red overlap, white edges)")
     elif stage == "rig":
         tiles, frames = rig_tiles(a, scene, cam)
-        print(f"review: {out}  (three-quarter view at rig_test frames {frames})")
+        print(f"review: {out}  (three-quarter view at each rig_test pose, frames {frames}; shots at rest)")
     elif stage == "animate":
         tiles, rows = animate_tiles(a, scene, cam)
         save_sheet(tiles, out)
@@ -60,6 +61,7 @@ def run(a, stage):
     else:
         tiles = texture_tiles(a, stage, scene, cam)
         print(f"review: {out}  (tiles: {', '.join(SHEETS['texture'])})")
+        maps_sheet(a, stage)
     save_sheet(tiles, out)
     shot_sheet(a, stage, scene, cam)
 
@@ -81,28 +83,17 @@ def shot_sheet(a, stage, scene, cam):
             workbench(scene, color_type="TEXTURE", light="FLAT")
         tiles.append(render(scene))
     out = a.path("review", f"{stage}_shots.png")
-    save_sheet(tiles, out, cols=2 if textured else 4)
+    save_sheet(tiles, out, cols=2 if textured else min(4, len(tiles)))
     per = "lit, unlit" if textured else "one tile each"
     print(f"review: {out}  (shots: {', '.join(s['name'] for s in shots)}; {per})")
 
 
-def bounds(objs):
-    dg = bpy.context.evaluated_depsgraph_get()
-    pts = []
-    for o in objs:
-        ev = o.evaluated_get(dg)
-        pts += [ev.matrix_world @ Vector(c) for c in ev.bound_box]
-    return (Vector([min(p[i] for p in pts) for i in range(3)]),
-            Vector([max(p[i] for p in pts) for i in range(3)]))
-
-
-def posed_bounds(obj):
-    """Bounds of obj's deformed vertices at the current frame."""
+def posed_points(obj):
+    """(n, 3) world positions of obj's deformed vertices at the current frame."""
     me = obj.evaluated_get(bpy.context.evaluated_depsgraph_get()).data
     co = np.empty(len(me.vertices) * 3, np.float32)
     me.vertices.foreach_get("co", co)
-    co = co.reshape(-1, 3)
-    return Vector(co.min(axis=0)), Vector(co.max(axis=0))
+    return co.reshape(-1, 3) @ np.array(obj.matrix_world.to_3x3()).T + np.array(obj.matrix_world.translation)
 
 
 def look(cam, d):
@@ -124,23 +115,26 @@ def place(cam, target, direction, distance, lens=50):
     cam.data.clip_end = distance * 10
 
 
-def aim(cam, lo, hi, view, pad=1.08):
+def aim(cam, pts, view, pad=1.08):
+    """Frame the (n, 3) world points pts from view, so the outermost just fits."""
     direction, ortho = VIEWS[view]
     d = Vector(direction).normalized()
-    center = (lo + hi) / 2
-    radius = (hi - lo).length / 2 or 1.0
     right, up = look(cam, d)
+    right, up, dn = np.array(right), np.array(up), np.array(d)
+    x, y = pts @ right, pts @ up
+    center = Vector(right * (x.min() + x.max()) / 2 + up * (y.min() + y.max()) / 2 + dn * (pts @ dn).mean())
+    rel = pts - np.array(center)
+    x, y, z = rel @ right, rel @ up, rel @ dn
+    radius = float(np.linalg.norm(rel, axis=1).max()) or 1.0
     if ortho:
         cam.data.type = "ORTHO"
-        half = (hi - lo) / 2
-        extent = max(sum(abs(half[i] * right[i]) for i in range(3)),
-                     sum(abs(half[i] * up[i]) for i in range(3)))
-        cam.data.ortho_scale = 2 * extent * pad
+        cam.data.ortho_scale = 2 * max(np.abs(x).max(), np.abs(y).max()) * pad
         dist = radius * 4
     else:
         cam.data.type = "PERSP"
         cam.data.lens = 50
-        dist = radius / math.sin(cam.data.angle / 2) * pad
+        tan = math.tan(cam.data.angle / 2)
+        dist = float((np.maximum(np.abs(x), np.abs(y)) * pad / tan + z).max())
     cam.location = center + d * dist
     cam.data.clip_start = dist * 0.01
     cam.data.clip_end = dist * 4
@@ -153,17 +147,27 @@ def render(scene):
     return imgio.read(path)
 
 
+GUTTER = 6
+PAPER = (0.5, 0.5, 0.5, 1)
+
+
 def blank(size=TILE):
-    t = np.zeros((size, size, 4), np.float32)
-    t[..., 3] = 1
+    t = np.empty((size, size, 4), np.float32)
+    t[:] = PAPER
     return t
 
 
 def save_sheet(tiles, path, cols=4):
+    """Tiles left to right, top to bottom, on grey paper with a gutter between them."""
     rows = math.ceil(len(tiles) / cols)
-    tiles = tiles + [blank(tiles[0].shape[0])] * (rows * cols - len(tiles))
-    # Image rows run bottom-up; lay tiles out top-down so the sheet reads left-to-right, top-to-bottom.
-    grid = np.concatenate([np.concatenate(tiles[r * cols:(r + 1) * cols], axis=1) for r in reversed(range(rows))], axis=0)
+    h, w = tiles[0].shape[:2]
+    grid = np.empty((rows * h + (rows - 1) * GUTTER, cols * w + (cols - 1) * GUTTER, 4), np.float32)
+    grid[:] = PAPER
+    for i, t in enumerate(tiles):
+        r, c = divmod(i, cols)
+        y = (rows - 1 - r) * (h + GUTTER)   # image rows run bottom-up
+        x = c * (w + GUTTER)
+        grid[y:y + h, x:x + w] = t
     imgio.write(grid, path, "sRGB")
 
 
@@ -173,6 +177,7 @@ def workbench(scene, color_type="MATERIAL", light="STUDIO"):
     sh.light = light
     sh.color_type = color_type
     sh.show_cavity = light != "FLAT"
+    sh.show_specular_highlight = False
     scene.world.color = (0.18, 0.18, 0.2)
 
 
@@ -198,15 +203,15 @@ def model_tiles(a, scene, cam):
     workbench(scene)
     low, high = a.mesh, a.high
     wire = wire_overlay(a, low)
-    lo, hi = bounds([low])
+    pts = posed_points(low)
     tiles = []
     for v in SHEETS["model"][:-1]:
-        aim(cam, lo, hi, v)
+        aim(cam, pts, v)
         tiles.append(render(scene))
     if high:
         low.hide_render = wire.hide_render = True
         high.hide_render = False
-        aim(cam, lo, hi, "three_quarter")
+        aim(cam, pts, "three_quarter")
         tiles.append(render(scene))
         low.hide_render = wire.hide_render = False
         high.hide_render = True
@@ -214,22 +219,22 @@ def model_tiles(a, scene, cam):
 
 
 def rig_tiles(a, scene, cam):
+    """One tile per rig_test key, each framed on its own posed mesh, then the armature back at rest."""
     workbench(scene)
     arm, obj = a.armature, a.mesh
     act = bpy.data.actions["rig_test"]
     arm.animation_data_create().action = act
     wire_overlay(a, obj)
-    scene.frame_set(int(act.frame_range[0]))
-    lo, hi = bounds([obj])
-    pad = (hi - lo) * 0.25
-    lo, hi = lo - pad, hi + pad
-    f0, f1 = act.frame_range
-    frames = sorted({int(round(f)) for f in np.linspace(f0, f1, 8)})
+    frames = sorted({int(round(k.co.x)) for fc in act.fcurves for k in fc.keyframe_points})
     tiles = []
     for f in frames:
         scene.frame_set(f)
-        aim(cam, lo, hi, "three_quarter", pad=1.0)
+        aim(cam, posed_points(obj), "three_quarter")
         tiles.append(render(scene))
+    arm.animation_data.action = None
+    for pb in arm.pose.bones:
+        pb.matrix_basis = Matrix()
+    scene.frame_set(1)
     return tiles, frames
 
 
@@ -256,19 +261,19 @@ def animate_tiles(a, scene, cam, per_clip=4):
     rows = []
     for name, c in animation.settings(a)["clips"].items():
         rows.append((name, sorted({int(round(f)) for f in np.linspace(1, c["frames"], per_clip)})))
-    lo, hi = bounds(boxes) if boxes else (None, None)
+    pts = [posed_points(b) for b in boxes]
     for name, frames in rows:
         arm.animation_data.action = bpy.data.actions[name]
         for f in frames:
             scene.frame_set(f)
-            l, h = posed_bounds(obj)
-            lo, hi = (l, h) if lo is None else (Vector(map(min, lo, l)), Vector(map(max, hi, h)))
+            pts.append(posed_points(obj))
+    pts = np.concatenate(pts)
     tiles = []
     for name, frames in rows:
         arm.animation_data.action = bpy.data.actions[name]
         for f in frames:
             scene.frame_set(f)
-            aim(cam, lo, hi, "front_right_low")
+            aim(cam, pts, "front_right_low")
             tiles.append(render(scene))
         tiles += [blank()] * (per_clip - len(frames))
     return tiles, rows
@@ -279,15 +284,37 @@ def texture_tiles(a, stage, scene, cam):
     obj.data.materials.clear()
     obj.data.materials.append(material.baked(a, stage))
     eevee(scene)
-    lo, hi = bounds([obj])
+    pts = posed_points(obj)
     tiles = []
     for v in SHEETS["texture"][:-1]:
-        aim(cam, lo, hi, v)
+        aim(cam, pts, v)
         tiles.append(render(scene))
     workbench(scene, color_type="TEXTURE", light="FLAT")
-    aim(cam, lo, hi, "three_quarter")
+    aim(cam, pts, "three_quarter")
     tiles.append(render(scene))
     return tiles
+
+
+def maps_sheet(a, stage):
+    """review/<stage>_maps.png: the baked maps flat, as the engine reads them."""
+    tiles, names = [], []
+    orm = a.texture(stage, "orm")
+    for name, path, channel in (("albedo", a.texture(stage, "albedo"), None), ("occlusion", orm, 0),
+                                ("roughness", orm, 1), ("metallic", orm, 2),
+                                ("normal", a.texture(stage, "normal"), None)):
+        if not os.path.exists(path):
+            continue
+        img = imgio.read(path)
+        if channel is not None:
+            img = np.concatenate([np.repeat(img[..., channel:channel + 1], 3, axis=2), img[..., 3:]], axis=2)
+        step = max(1, img.shape[0] // TILE)
+        tiles.append(img[::step, ::step])
+        names.append(name)
+    if not tiles:
+        return
+    out = a.path("review", f"{stage}_maps.png")
+    save_sheet(tiles, out, cols=len(tiles))
+    print(f"review: {out}  (maps: {', '.join(names)})")
 
 
 def eevee(scene):
