@@ -26,6 +26,16 @@ artists or their work, and its assets are not meant to ship in their place.
 
 Blender 4.5 LTS at `~/opt/blender/blender`, or set `$BLENDER`. Baking uses the GPU (OptiX or CUDA) when there is one.
 
+To use the skills from a game project, clone this repo inside it (or add it as a submodule) and link it in:
+
+```
+styled_3d_harness/install.sh            # into the parent directory
+styled_3d_harness/install.sh ~/my_game  # or anywhere else
+```
+
+This symlinks `pipeline/` and each skill into the target's `.claude/skills/`. Run `claude` from the target; assets
+land in its `assets/`. Rerun after pulling a new skill.
+
 ```
 pipeline/asset new crate
 pipeline/asset build crate model
