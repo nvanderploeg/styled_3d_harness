@@ -11,6 +11,7 @@ Claude Code skills that make placeholder 3D game assets in Blender, from a brief
 | `texture-from-reference` | by Claude or you | stylized (painted light) or PBR maps matched to references |
 | `animate-asset` | by Claude or you | clips for a rigged asset (sits, idles, emotes), exported in its glTF |
 | `art-guide` | by Claude or you | the world, zone or set art guide that assets of one game follow |
+| `level-from-blueprint` | by Claude or you | every art asset of a level from a designer's package: guides, modules fitted to the block-out, placement, delivery |
 
 Every stage is a Blender build script under `assets/<slug>/build/`. `pipeline/asset build` runs it, checks the result
 against hard limits, and renders a review sheet. See [pipeline/ASSET.md](pipeline/ASSET.md) for the asset contract.
@@ -69,4 +70,10 @@ pipeline/asset compare texture_ref castle_platform_straight castle_platform_cros
 ```
 ~/opt/blender/blender --background --factory-startup --python pipeline/tests/test_art.py
 ~/opt/blender/blender --background --factory-startup --python pipeline/tests/test_pipeline.py
+```
+
+The level skill's tools check themselves against the package they were lifted from, so they run from a project that holds it:
+
+```
+python3 .claude/skills/level-from-blueprint/tools/test_tools.py --scratch <dir>
 ```

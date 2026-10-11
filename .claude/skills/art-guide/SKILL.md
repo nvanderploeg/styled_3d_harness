@@ -15,7 +15,7 @@ Done when you can name the file you will write, and you have read every guide ab
 
 ## 2. Gather the look
 
-Collect traits for each section of your layer (ART.md, *Format*): what a reviewer would see on an asset that has the look. Take them from the user's words and refs first. For a look that exists outside this repo (a game, a film, a real place), search for descriptions, artist interviews and breakdowns, and note each trait's source. Where the evidence leaves a defining choice open, such as faithful or reimagined, painted or cel-shaded, take the reading the user's words point to and keep the other for the report.
+Collect traits for each section of your layer (ART.md, *Format*): what a reviewer would see on an asset that has the look. Take them from the user's words and refs first. Measure what a plan or catalogue gives as numbers from its source again, rather than copying them. For a look that exists outside this repo (a game, a film, a real place), search for descriptions, artist interviews and breakdowns, and note each trait's source. Where the evidence leaves a defining choice open, such as faithful or reimagined, painted or cel-shaded, take the reading the user's words point to and keep the other for the report.
 
 Distil the look into **leading words**: the fewest words that call it to mind.
 
@@ -28,9 +28,13 @@ Copy the example for your layer to its place in `assets/_art/`, replace its open
 - **Leading words first.** The one-line Style, Mood or Set holds them, and every rule below unpacks them.
 - **Observable rules.** Each rule names something a reviewer can point at on a review sheet, like "every long edge bows or tapers".
 - **State the target.** Phrase each rule as what to do, and pair any guardrail with what to do instead.
+- **Name the failure look.** For a rule no check can measure, say what breaking it looks like on a sheet: "anything that reads as masonry breaks *Natural before built*". A world that keeps things natural lists the tells of a made thing, such as square sections, parallel faces, even courses and uniform fills.
+- **Shapes, not only sizes.** A feature given only a depth and an angle comes back in whatever shape fits them. Say its shape too: "a step, a crisp edge over a short underside, one chamfer below".
+- **Defaults with a fallback.** A preference names what happens where it can't fit: "a wall at least `reach_m` out, else a curtain at most `curtain_in_m` in front of the face". A rule with no fallback stops whoever meets the case where it's impossible.
 - **Measurements in json.** Sizes, angles, ratios and colours live in the json under their section. The prose names the key and says what it looks like on the asset.
-- **The highest layer that holds.** A rule true of the whole game goes in the world guide. A lower guide narrows the guides above it or adds to them.
-- **Palette as a value ladder.** Order the swatches from dark to light. Go through every shape, wear and motif rule on the chain for the materials that share an edge on one mesh, and declare each pair in `touches`; the check holds every pair `min_zone_contrast` apart. Accents stay few, and what gameplay needs seen takes the clearest rung.
+- **The highest layer that holds.** A rule true of the whole game goes in the world guide. A lower guide narrows the guides above it or adds to them, and never grants more than they allow. `pipeline/asset art` catches a loosened limit, but not prose or a `kit` value that lets a piece grow where the world forbids it. Check each grant against the guides above, and bring any exception to the user to decide.
+- **Palette as a value ladder.** Order the swatches from dark to light. Go through every shape, wear and motif rule on the chain for the materials that share an edge on one mesh, and declare each pair in `touches`; the check holds every pair `min_zone_contrast` apart. Accents stay few, and what gameplay needs seen takes the clearest rung, starting a small margin above `min_zone_contrast`: at full contrast it reads as painted on at play distance.
+- **Colours measured from photos carry their light.** When the engine lights the game (`texture_mode` `"pbr"`), drop the shadow and highlight extremes and build the ladder on the mid values. Name each swatch for its material, never for its light: `foliage_dry`, not `foliage_lit`.
 - **One home per decision.** What every piece of a set shares goes in the set guide, so each asset's `brief` holds only what is its own.
 - **Refs with a purpose.** Name each ref and what to take from it. Where the user has no images yet, list the refs to gather.
 

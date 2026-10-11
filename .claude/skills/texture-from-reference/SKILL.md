@@ -7,6 +7,8 @@ description: Texture a game asset to match reference images and its art guides, 
 
 You rebuild each zone's surface as a shader-node recipe that matches the references, then bake it to the asset's final maps. Read `pipeline/ASSET.md` first; it defines the asset folder, the scene conventions and the commands. Read `pipeline/MATERIALS.md` for value ranges.
 
+An asset whose `materials` is `"shared"` has no texture stages: the engine paints its zones from a shared library, and its `bake` stage bakes only its normal and occlusion maps (ASSET.md).
+
 This stage builds on `texture_base.blend`. If that stage isn't built, run the `texture-base` skill first; its zone values are this stage's starting palette.
 
 ## 1. Pick the branch

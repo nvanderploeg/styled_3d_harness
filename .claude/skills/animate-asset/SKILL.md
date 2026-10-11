@@ -7,7 +7,7 @@ description: Animate a rigged game asset with clips such as idles, sits, emotes 
 
 You write `build/animate.py`, which keys the clips named in `asset.json` `animations`. Read `pipeline/ASSET.md` first, above all *Animations*; it defines the clip spec, what the check holds, and the commands.
 
-The animate stage builds on the latest texture stage, which builds on the rig. If any of them is failing or stale (`pipeline/asset status <slug>`), bring it back to `pass` first. A clip can't rescue a joint that collapses: that is the rig's fault, and goes back to `rig-asset`.
+The animate stage builds on the stage before it: the latest texture stage, or the `bake` stage when the asset's materials are shared. If any of them is failing or stale (`pipeline/asset status <slug>`), bring it back to `pass` first. A clip can't rescue a joint that collapses: that is the rig's fault, and goes back to `rig-asset`.
 
 ## 1. Plan the clips
 

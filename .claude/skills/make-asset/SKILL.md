@@ -21,7 +21,7 @@ Ask the requester only about a field that neither the request nor a default can 
 
 ## 3. Run the stages
 
-Take the stages in the order `pipeline/asset status <slug>` lists them, skipping any that already pass. For each one:
+Take the stages in the order `pipeline/asset status <slug>` lists them, skipping any that already pass. A shared asset's `bake` stage has no skill of its own: copy `pipeline/templates/bake.py` to `build/bake.py`, build it, and gate its sheet like any other. For each other stage:
 
 1. **Dispatch** a general-purpose `Agent` with this brief:
 
@@ -29,9 +29,9 @@ Take the stages in the order `pipeline/asset status <slug>` lists them, skipping
 
    A fresh agent per stage keeps each stage's attention on its own criterion, and keeps renders out of your context. Without an Agent tool, invoke the stage's skill yourself and keep the same gate.
 
-2. **Gate.** Run `pipeline/asset status <slug>`; the stage must read `pass`. Then read its review sheet and its shots sheet yourself, and judge them against the brief, the refs and the art guides with fresh eyes. Judge the sheets, not the agent's report of them.
+2. **Gate.** Run `pipeline/asset status <slug>`; the stage must read `pass`. Then read its review sheet and its shots sheet yourself, and judge them against the brief, the refs and the art guides with fresh eyes. Judge the sheets, not the agent's report of them. Look hardest for the failure looks the guides name, such as a natural piece that reads as built: every check can pass on them.
 
-3. **Send back or accept.** If the sheet falls short, `SendMessage` the same agent with each specific finding: the tile, what's wrong, and what right looks like. After three rounds on one stage, stop and bring the sheet and the open findings to the requester.
+3. **Send back or accept.** If the sheet falls short, `SendMessage` the same agent with each specific finding: the tile, what's wrong, and what right looks like. Give a silhouette as proportions ("trunk visible over half the height, pads thinner than a third of their length"), not a word for it ("krummholz"): words came back as lollipops, then mushrooms. After three rounds on one stage, stop and bring the sheet and the open findings to the requester.
 
 A stage that changes an upstream stage makes the later ones stale. `status` shows this; rebuild those stages in order before continuing.
 
@@ -40,11 +40,12 @@ A stage that changes an upstream stage makes the later ones stale. `status` show
 When the request is several pieces that belong together, they share a set guide and code in `assets/_kit/` (ASSET.md, *Sets*).
 
 - **One home per decision.** Everything the pieces share lives in the set guide or the kit. Each piece's `brief` holds only what is its own.
-- **Lead first.** Take one lead piece through each stage alone. Its approved code becomes the kit, and every value it settled that the pieces share (a swatch, a kit measurement) moves into the set guide.
+- **Lead first.** Take one lead piece through each stage alone. Its approved code becomes the kit, and every value it settled that the pieces share (a swatch, a kit measurement) moves into the set guide. Before the variants start, have the lead's agent run the kit over every other piece without writing assets: the pieces it can't make are kit work, found while it is cheap.
+- **Rules in code.** A guide rule a sheet can't show, such as an outline matched to a source mesh, a minimum slope or a tolerance, goes in a check the kit runs on every build and raises on. A piece that will be scaled is checked at the ends of its range.
 - **Then the variants, in parallel.** Each variant stage's brief says: copy the lead's build script unchanged, edit nothing in `_kit`, and report any problem the lead didn't show as a kit problem, with its tile, rather than working around it.
-- **One writer.** Only one agent edits `_kit` at a time, and only while no other agent is building from it.
+- **One writer.** Only one agent edits `_kit` at a time, and only while no other agent is building from it. A second agent may extend a kit that pieces are built from only once every approved piece is recorded with `pipeline/asset approve`.
 - **Fix the kit, not the piece.** A problem one variant finds in shared code belongs to every piece. Fix it once in the kit, then rebuild every affected piece.
-- **Hold approved pieces still.** After any change to `_kit` or a guide, run `pipeline/asset verify` on every approved stage that uses it. A CHANGED stage is rebuilt and reviewed again. If a fix can't keep approved pieces identical, bring the trade-off to the requester with options before applying it.
+- **Hold approved pieces still.** Record each piece that passes your gate with `pipeline/asset approve <slug>`: a build that would change an approved stage then refuses to save. After any change to `_kit` or a guide, run `pipeline/asset verify` on every approved stage that uses it. A CHANGED stage is rebuilt and reviewed again. If a fix can't keep approved pieces identical, bring the trade-off to the requester with options before applying it.
 - **Consistent across the set.** The guides' limits bind every piece, so when the world guide sets no `limits.texel_density_px_per_m` band, the set guide does. At each texture stage, `pipeline/asset compare <stage> <lead> <piece>...` must read CONSISTENT, or you name why each flagged piece differs.
 
 ## 4. Export and report

@@ -7,6 +7,8 @@ description: Give a modeled game asset its base texture — a flat colour, rough
 
 You give every zone one flat material read and bake it into the asset's first set of maps. The asset should read correctly at a glance before any detail exists. Read `pipeline/ASSET.md` first; it defines the asset folder, the scene conventions and the commands. Read `pipeline/MATERIALS.md` for value ranges.
 
+An asset whose `materials` is `"shared"` has no texture stages: the engine paints its zones from a shared library, and its `bake` stage bakes only its normal and occlusion maps (ASSET.md).
+
 ## 1. Pick a read per zone
 
 List the zones with `pipeline/asset check <slug> model` (the `zones` metric), and the palette and limits with `pipeline/asset art <slug>`. A zone with a palette swatch of its own name takes that swatch; the template's `zone_table` fills it in. For every other zone, pick an sRGB colour, a roughness and a metallic of 0 or 1 from MATERIALS.md (its stylized rule when `texture_mode` is `"stylized"`), nudged toward the brief and any refs, inside the `albedo_luma` and `max_saturation` limits.
