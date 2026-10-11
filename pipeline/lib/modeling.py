@@ -1,4 +1,5 @@
 import contextlib
+import heapq
 import io
 import math
 import re
@@ -6,6 +7,7 @@ import sys
 
 import bmesh
 import bpy
+import numpy as np
 from mathutils import Matrix, Vector
 
 PALETTE = [
@@ -50,6 +52,204 @@ def head(obj, faces=None):
     attr = me.attributes.get(HEAD) or me.attributes.new(HEAD, "BOOLEAN", "FACE")
     for i in (range(len(me.polygons)) if faces is None else faces):
         attr.data[i].value = True
+
+
+KEEP = "keep"
+
+
+def keep(obj, faces=None):
+    """Mark faces (all when None; else polygon indices) of obj as kept: `reduce` leaves them, their vertices
+    and edges exactly as built. Keep what gameplay measures: a walkable top, a jump lip."""
+    me = obj.data
+    attr = me.attributes.get(KEEP) or me.attributes.new(KEEP, "BOOLEAN", "FACE")
+    for i in (range(len(me.polygons)) if faces is None else faces):
+        attr.data[i].value = True
+
+
+def reduce(asset, tris=None, planar_deg=1.0, borders=True, sharp_angle=35):
+    """`<slug>`: the detailed mesh reduced to tris triangles (the spec's tri_budget when None), with the
+    detailed mesh kept as `<slug>_high`, the bake source. The detailed mesh is `<slug>_high` when the script
+    built one, else the finalized `<slug>`.
+
+    Faces within planar_deg of coplanar dissolve first, so flat faces stay flat; edge collapses then remove the
+    vertices whose loss costs the shape least, a large face weighing more than small ones. Every vertex of the
+    reduced mesh is a vertex of the detailed one. Kept faces (`keep`) keep their vertices and edges bit-exact.
+    With borders, every zone border keeps its vertices too, and an open mesh always keeps its rim. The reduced
+    mesh carries the zones and no UVs: unwrap it. It may come out triangle-dominant."""
+    target = tris or asset.spec["tri_budget"]
+    high, low = asset.high, asset.mesh
+    if high is None:
+        if low is None:
+            raise SystemExit("reduce needs the detailed mesh: finalize it as the asset mesh, or build <slug>_high")
+        low.name = low.data.name = f"{asset.slug}_high"
+        high, low = low, None
+    if low is not None:
+        bpy.data.objects.remove(low)
+    low = high.copy()
+    low.data = high.data.copy()
+    low.name = low.data.name = asset.slug
+    bpy.context.scene.collection.objects.link(low)
+    me = low.data
+    while me.uv_layers:
+        me.uv_layers.remove(me.uv_layers[0])
+    before = _tris(me)
+
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    layer = bm.faces.layers.bool.get(KEEP)
+
+    def kept(f):
+        return layer is not None and f[layer]
+
+    kept_tris = sum(len(f.verts) - 2 for f in bm.faces if kept(f))
+    if kept_tris > target:
+        bm.free()
+        raise SystemExit(f"reduce: the kept faces alone are {kept_tris} tris, over the budget {target}; keep "
+                         "fewer faces or raise tri_budget")
+    fixed_verts = {v for f in bm.faces if kept(f) for v in f.verts}
+    fixed_edges = {e for f in bm.faces if kept(f) for e in f.edges}
+    bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(planar_deg), use_dissolve_boundaries=False,
+                             verts=[v for v in bm.verts if v not in fixed_verts],
+                             edges=[e for e in bm.edges if e not in fixed_edges], delimit={"MATERIAL"})
+    quadric = _quadrics(bm)
+    bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 3 and not kept(f)],
+                          quad_method="BEAUTY", ngon_method="BEAUTY")
+    locked = {v for f in bm.faces if kept(f) for v in f.verts} | {v for v in bm.verts if v.is_boundary}
+    if borders:
+        locked |= {v for v in bm.verts if len({f.material_index for f in v.link_faces}) > 1}
+    after = _collapse(bm, target, locked, quadric, asset.limits.get("min_corner_deg") or 0.0)
+    bmesh.ops.join_triangles(bm, faces=[f for f in bm.faces if len(f.verts) == 3 and not kept(f)],
+                             cmp_materials=True, angle_face_threshold=math.radians(planar_deg),
+                             angle_shape_threshold=math.radians(40))
+    bm.to_mesh(me)
+    bm.free()
+    if after > target:
+        raise SystemExit(f"reduce: {after} tris left, over the budget {target}, without moving the kept faces "
+                         f"({kept_tris} tris){' or zone borders' if borders else ''}. Keep fewer faces, give the "
+                         "high simpler zone borders, pass borders=False, or raise tri_budget")
+    me.shade_smooth()
+    me.set_sharp_from_angle(angle=math.radians(sharp_angle))
+    print(f"reduce: {before} → {after} tris (budget {target}), {kept_tris} of them kept")
+    return low
+
+
+def _tris(me):
+    return sum(len(p.vertices) - 2 for p in me.polygons)
+
+
+def _quadrics(bm):
+    """{vertex: 4x4 quadric}: the planes of the faces around each vertex, each weighted by its face's area."""
+    bm.normal_update()
+    quadric = {v: np.zeros((4, 4)) for v in bm.verts}
+    for f in bm.faces:
+        n = f.normal
+        plane = np.array([n.x, n.y, n.z, -n.dot(f.verts[0].co)])
+        q = np.outer(plane, plane) * f.calc_area()
+        for v in f.verts:
+            quadric[v] += q
+    return quadric
+
+
+def _collapse(bm, target, locked, quadric, min_corner_deg):
+    """Merge vertices of bm's triangles into a neighbour, cheapest first, until it holds target triangles or no
+    merge is left; the triangles it holds. A merge costs the quadric error of the surviving vertex over the
+    planes the two gathered (`_quadrics`). A locked vertex never goes, though a free neighbour may merge into
+    it. A merge that would break the surface's topology, turn a face more than 60° or leave a corner under
+    min_corner_deg is skipped. The merges run on index lists and reach bm in one weld."""
+    bm.verts.index_update()
+    bm.faces.index_update()
+    verts = list(bm.verts)
+    co = [v.co.copy() for v in verts]
+    q = [quadric[v] for v in verts]
+    lock = {v.index for v in locked}
+    faces = {f.index: [v.index for v in f.verts] for f in bm.faces}
+    normal = {f.index: f.normal.copy() for f in bm.faces}
+    around = [set() for _ in verts]
+    for i, vs in faces.items():
+        for v in vs:
+            around[v].add(i)
+    stamp = [0] * len(verts)
+    merged, heap, count = {}, [], 0
+
+    def ring(v):
+        out = set()
+        for f in around[v]:
+            vs = faces[f]
+            i = vs.index(v)
+            out.update((vs[i - 1], vs[(i + 1) % len(vs)]))
+        return out
+
+    def push(a, b):
+        nonlocal count
+        pair = q[a] + q[b]
+        for keep, gone in ((a, b), (b, a)):
+            if gone not in lock:
+                p = np.array((*co[keep], 1.0))
+                count += 1
+                heapq.heappush(heap, (float(p @ pair @ p), count, keep, gone, stamp[keep], stamp[gone]))
+
+    for e in bm.edges:
+        push(e.verts[0].index, e.verts[1].index)
+    tris = sum(len(vs) - 2 for vs in faces.values())
+    limit = math.cos(math.radians(60))
+    while tris > target and heap:
+        _, _, keep, gone, sk, sg = heapq.heappop(heap)
+        if stamp[keep] != sk or stamp[gone] != sg:
+            continue
+        turned = _merge(faces, around, co, normal, ring, keep, gone, limit, min_corner_deg)
+        if turned is None:
+            continue
+        for f in around[keep] & around[gone]:
+            for v in faces.pop(f):
+                if v != gone:
+                    around[v].discard(f)
+            del normal[f]
+        for f, n in turned.items():
+            faces[f] = [keep if v == gone else v for v in faces[f]]
+            normal[f] = n
+            around[keep].add(f)
+        around[gone] = set()
+        merged[gone] = keep
+        q[keep] = q[keep] + q[gone]
+        stamp[keep] += 1
+        stamp[gone] += 1
+        tris -= 2
+        for v in ring(keep):
+            push(keep, v)
+
+    def final(v):
+        while v in merged:
+            v = merged[v]
+        return v
+
+    if merged:
+        bmesh.ops.weld_verts(bm, targetmap={verts[g]: verts[final(g)] for g in merged})
+    return sum(len(f.verts) - 2 for f in bm.faces)
+
+
+def _merge(faces, around, co, normal, ring, keep, gone, limit, min_corner_deg):
+    """{face: new normal} for the faces that move when gone merges into keep, or None when the merge would break
+    the surface's topology, turn a face's normal by more than acos(limit) or leave a corner under
+    min_corner_deg."""
+    shared = around[keep] & around[gone]
+    if len(shared) != 2 or any(len(faces[f]) != 3 for f in shared):
+        return None
+    if ring(keep) & ring(gone) != {v for f in shared for v in faces[f]} - {keep, gone}:
+        return None
+    turned = {}
+    for f in around[gone] - shared:
+        if len(faces[f]) != 3:
+            return None
+        pts = [co[keep] if v == gone else co[v] for v in faces[f]]
+        n = (pts[1] - pts[0]).cross(pts[2] - pts[0])
+        if n.length < 1e-12 or n.normalized().dot(normal[f]) < limit:
+            return None
+        for i in range(3):
+            u, w = pts[i - 1] - pts[i], pts[(i + 1) % 3] - pts[i]
+            if u.length == 0 or w.length == 0 or math.degrees(u.angle(w)) < min_corner_deg:
+                return None
+        turned[f] = n.normalized()
+    return turned
 
 
 def bake_modifiers(obj):

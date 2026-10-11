@@ -1,5 +1,7 @@
 """Regression guards: rebuild a stage without touching its outputs, diff against what was approved and
 re-check it under the current spec, and compare zone metrics across the pieces of a set."""
+import contextlib
+import hashlib
 import json
 import os
 import shutil
@@ -16,35 +18,103 @@ MESH_TOL = 1e-6
 MAP_TOL = 2 / 255
 
 
+# Per attribute data type: the property that holds a value, its component count, and the dtype to read it as.
+VALUES = {"FLOAT": ("value", 1, np.float64), "INT": ("value", 1, np.int64), "INT8": ("value", 1, np.int64),
+          "BOOLEAN": ("value", 1, bool), "FLOAT2": ("vector", 2, np.float64),
+          "FLOAT_VECTOR": ("vector", 3, np.float64), "FLOAT_COLOR": ("color", 4, np.float64),
+          "BYTE_COLOR": ("color", 4, np.float64), "INT16_2D": ("value", 2, np.int64),
+          "INT32_2D": ("value", 2, np.int64), "QUATERNION": ("value", 4, np.float64),
+          "FLOAT4X4": ("value", 16, np.float64)}
+
+
+def _arr(coll, attr, n, dtype):
+    out = np.empty(len(coll) * n, dtype)
+    coll.foreach_get(attr, out)
+    return out
+
+
 def snapshot(a):
-    """Everything a stage decides about the asset mesh: geometry, zones, seams, sharp edges, UVs, weights."""
+    """Everything a stage decides about the asset: the mesh's geometry, zones, seams, sharp edges, UVs, weights
+    and every other attribute it carries; the armature's rest bones; and every action the file keeps."""
+    if a.mesh is None:
+        return {"mesh": None}
     me = a.mesh.data
-
-    def arr(coll, attr, n, dtype):
-        out = np.empty(len(coll) * n, dtype)
-        coll.foreach_get(attr, out)
-        return out
-
     snap = {
-        "co": arr(me.vertices, "co", 3, np.float64),
-        "loops": arr(me.loops, "vertex_index", 1, np.int64),
-        "starts": arr(me.polygons, "loop_start", 1, np.int64),
-        "zone": arr(me.polygons, "material_index", 1, np.int64),
+        "co": _arr(me.vertices, "co", 3, np.float64),
+        "loops": _arr(me.loops, "vertex_index", 1, np.int64),
+        "starts": _arr(me.polygons, "loop_start", 1, np.int64),
+        "zone": _arr(me.polygons, "material_index", 1, np.int64),
         "zones": [m.name for m in me.materials],
-        "edges": np.sort(arr(me.edges, "vertices", 2, np.int64).reshape(-1, 2), axis=1).ravel(),
-        "seams": arr(me.edges, "use_seam", 1, bool),
-        "uv": arr(me.uv_layers.active.data, "uv", 2, np.float64) if me.uv_layers else np.empty(0),
+        "edges": np.sort(_arr(me.edges, "vertices", 2, np.int64).reshape(-1, 2), axis=1).ravel(),
+        "seams": _arr(me.edges, "use_seam", 1, bool),
+        "uv": _arr(me.uv_layers.active.data, "uv", 2, np.float64) if me.uv_layers else np.empty(0),
     }
     sharp = me.attributes.get("sharp_edge")
-    snap["sharp"] = arr(sharp.data, "value", 1, bool) if sharp else np.zeros(len(me.edges), bool)
+    snap["sharp"] = _arr(sharp.data, "value", 1, bool) if sharp else np.zeros(len(me.edges), bool)
     groups = {g.index: g.name for g in a.mesh.vertex_groups}
     snap["weights"] = sorted((v.index, groups[g.group], round(g.weight, 6)) for v in me.vertices for g in v.groups)
+    attrs = sorted((at for at in me.attributes if not at.name.startswith(".") and at.name != "position"),
+                   key=lambda at: at.name)
+    snap["attributes"] = [(at.name, at.domain, at.data_type) for at in attrs]
+    for at in attrs:
+        prop, n, dtype = VALUES.get(at.data_type, (None, 0, None))
+        snap[f"attribute {at.name}"] = _arr(at.data, prop, n, dtype) if prop else [d.value for d in at.data]
+    bones = sorted(a.armature.data.bones, key=lambda b: b.name) if a.armature else []
+    snap["bones"] = [(b.name, b.parent.name if b.parent else None, b.use_deform, b.use_connect) for b in bones]
+    snap["bone rest"] = np.array([[*np.ravel(b.matrix_local), *b.tail_local] for b in bones], np.float64).ravel()
+    for act in sorted((act for act in bpy.data.actions if act.users), key=lambda act: act.name):
+        channels, keys = [], [np.array(act.frame_range, np.float64)]
+        for slot, fc in _channels(act):
+            kps = fc.keyframe_points
+            channels.append((slot, fc.data_path, fc.array_index, [k.interpolation for k in kps]))
+            keys += [_arr(kps, "co", 2, np.float64), _arr(kps, "handle_left", 2, np.float64),
+                     _arr(kps, "handle_right", 2, np.float64)]
+        snap[f"action {act.name}"] = channels
+        snap[f"action {act.name} keys"] = np.concatenate(keys)
     return snap
+
+
+def _channels(act):
+    """(slot identifier, fcurve) for every fcurve of act, by slot, data path and index."""
+    if act.is_action_layered:
+        found = [(bag.slot.identifier, fc) for layer in act.layers for strip in layer.strips
+                 for bag in strip.channelbags for fc in bag.fcurves]
+    else:
+        found = [("", fc) for fc in act.fcurves]
+    return sorted(found, key=lambda c: (c[0], c[1].data_path, c[1].array_index))
+
+
+def digest(snap):
+    """Short hash of a snapshot, its floats rounded to 6 decimals, the precision MESH_TOL compares at."""
+    h = hashlib.sha1()
+    for k in sorted(snap):
+        v = snap[k]
+        if isinstance(v, np.ndarray):
+            if v.dtype.kind == "f":
+                v = np.round(v, 6) + 0.0
+            v = f"{v.dtype}{v.shape}".encode() + np.ascontiguousarray(v).tobytes()
+        else:
+            v = json.dumps(v, default=repr).encode()
+        h.update(k.encode() + b"\0" + v + b"\0")
+    return h.hexdigest()[:12]
+
+
+def against_approval(approval, new, saved=None):
+    """How the snapshot new strays from an approval: [] when it hashes as approved, else its diff against saved
+    (the stage's snapshot as built) or, with nothing to diff, the two hashes."""
+    if digest(new) == approval["snapshot"]:
+        return []
+    found = diff_snapshots(saved, new) if saved is not None else []
+    return found or [f"snapshot {digest(new)}, approved {approval['snapshot']} on {approval['at']}"]
 
 
 def diff_snapshots(old, new):
     out = []
+    for k in sorted(set(old) - set(new)) + sorted(set(new) - set(old)):
+        out.append(f"{k}: only in {'saved' if k in old else 'rebuild'}")
     for k, v in old.items():
+        if k not in new:
+            continue
         w = new[k]
         if isinstance(v, np.ndarray):
             if v.shape != w.shape:
@@ -60,23 +130,40 @@ def diff_snapshots(old, new):
     return out
 
 
+def has_maps(stage):
+    return stage.startswith("texture") or stage == "bake"
+
+
+@contextlib.contextmanager
+def scratch_maps(a, stage):
+    """Point a.textures(stage) at a scratch folder in the asset for the block, removed after it; yields the
+    saved maps' folder and the scratch one."""
+    tmp = tempfile.mkdtemp(prefix=f"verify_{stage}_", dir=a.path())
+    saved = a.textures
+    a.textures = lambda s: os.path.join(tmp, s) if s == stage else saved(s)
+    try:
+        yield saved(stage), a.textures(stage)
+    finally:
+        a.textures = saved
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def verify(a, stage, run_stage):
     """Rebuild `stage` from its upstream .blend and script into a scratch folder in the asset and diff it
-    against the saved stage. An IDENTICAL stage is checked again under the current spec; True when it is
-    identical and passes."""
+    against the saved stage and any approval. An IDENTICAL stage is checked again under the current spec and
+    takes the rebuild's data inputs; True when it is identical and passes."""
     bpy.ops.wm.open_mainfile(filepath=a.blend(stage))
     old = snapshot(a)
-    tmp = tempfile.mkdtemp(prefix=f"verify_{stage}_", dir=a.path())
-    saved_textures = a.textures
-    a.textures = lambda s: os.path.join(tmp, s) if s == stage else saved_textures(s)
-    try:
-        run_stage(a, stage)
-        problems = diff_snapshots(old, snapshot(a))
-        if stage.startswith("texture"):
-            problems += diff_maps(saved_textures(stage), a.textures(stage), a.slug)
-    finally:
-        a.textures = saved_textures
-        shutil.rmtree(tmp, ignore_errors=True)
+    approval = a.approvals().get(stage)
+    with scratch_maps(a, stage) as (saved_maps, new_maps):
+        inputs = run_stage(a, stage)
+        new = snapshot(a)
+        problems = diff_snapshots(old, new)
+        if approval and digest(new) != approval["snapshot"]:
+            problems.append(f"against the approval of {approval['at']}: snapshot {digest(new)}, "
+                            f"approved {approval['snapshot']}")
+        if has_maps(stage):
+            problems += diff_maps(saved_maps, new_maps, a.slug)
     for p in problems:
         print(f"CHANGED {p}")
     print(f"verify {stage}: {'IDENTICAL' if not problems else 'CHANGED'}")
@@ -87,6 +174,7 @@ def verify(a, stage, run_stage):
     ok = checks.run(a, stage)
     rep = a.report(stage)
     rep["verified"] = time.time()
+    rep["inputs"] = inputs
     with open(a.path("review", f"{stage}.json"), "w") as f:
         json.dump(rep, f, indent=2)
     return ok

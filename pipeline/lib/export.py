@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 
@@ -10,11 +11,18 @@ import rigging
 
 
 def export(a):
-    tex = a.latest("texture")
-    if tex is None:
-        raise SystemExit("nothing to export — no texture stage is built")
-    last = "animate" if a.animated else tex
-    for s in a.stages()[: a.stages().index(last) + 1]:
+    order = a.stages()
+    if a.shared:
+        last = order[-1]
+        if last == "bake" and not os.path.exists(a.blend("bake")):
+            last = order[-2]
+        tex = "bake" if order.index(last) >= order.index("bake") else None
+    else:
+        tex = a.latest("texture")
+        if tex is None:
+            raise SystemExit("nothing to export — no texture stage is built")
+        last = "animate" if a.animated else tex
+    for s in order[: order.index(last) + 1]:
         rep = a.report(s)
         if not os.path.exists(a.blend(s)) or not rep or not rep["pass"] \
                 or rep.get("built") != os.path.getmtime(a.blend(s)):
@@ -28,8 +36,16 @@ def export(a):
     obj, arm = a.mesh, a.armature
     if a.high:
         bpy.data.objects.remove(a.high)
-    obj.data.materials.clear()
-    obj.data.materials.append(material.baked(a, tex))
+        bpy.context.view_layer.update()
+    if a.shared:
+        zones = [m.name for m in obj.data.materials]
+        maps = {k: a.texture(tex, k) for k in ("normal", "occlusion")} if tex else {}
+        for m in obj.data.materials:
+            material.preview(m, a.swatch(m.name[5:]), **maps)
+    else:
+        zones = None
+        obj.data.materials.clear()
+        obj.data.materials.append(material.baked(a, tex))
     bake.triangulate(obj)
     if arm:
         arm.animation_data.action = None
@@ -46,20 +62,23 @@ def export(a):
         export_animations=bool(clips), export_animation_mode="ACTIONS", export_force_sampling=True,
         export_def_bones=False, export_tangents=True, export_image_format="AUTO",
     )
-    tex_out = os.path.join(out_dir, "textures")
-    os.makedirs(tex_out, exist_ok=True)
-    for f in os.listdir(a.textures(tex)):
-        shutil.copy2(os.path.join(a.textures(tex), f), tex_out)
+    if tex:
+        tex_out = os.path.join(out_dir, "textures")
+        os.makedirs(tex_out, exist_ok=True)
+        for f in os.listdir(a.textures(tex)):
+            shutil.copy2(os.path.join(a.textures(tex), f), tex_out)
 
-    ok = verify(a, glb, clips)
+    ok = verify(a, glb, clips, zones, maps=bool(tex))
     print(f"export {glb}: {'PASS' if ok else 'FAIL'}")
     if not ok:
         os.remove(glb)
         raise SystemExit("exported file failed verification and was removed")
 
 
-def verify(a, glb, clips=()):
-    """Re-import the file into an empty scene and confirm what an engine will see."""
+def verify(a, glb, clips=(), zones=None, maps=False):
+    """Re-import the file into an empty scene and confirm what an engine will see: one baked, textured
+    material, or with zones, exactly those zone materials, each with the bake's normal and occlusion textures
+    when maps and no texture otherwise, and never a colour texture."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=glb)
     arms = [o for o in bpy.data.objects if o.type == "ARMATURE"]
@@ -75,7 +94,17 @@ def verify(a, glb, clips=()):
         budget = a.spec["tri_budget"] + (a.spec.get("head_tri_budget") or 0)
         if tris > budget:
             fails.append(f"{tris} tris exceeds the tri budget {budget}")
-        if len(me.materials) != 1:
+        if zones is not None:
+            found = sorted(m.name for m in me.materials)
+            if found != sorted(zones):
+                fails.append(f"materials {found}, expected the zones {sorted(zones)}")
+            want = {"normalTexture", "occlusionTexture"} if maps else set()
+            for m in gltf(glb).get("materials", []):
+                has = {k for k in (*m, *m.get("pbrMetallicRoughness", {})) if k.endswith("Texture")}
+                if has != want:
+                    fails.append(f"{m['name']} carries {sorted(has) or 'no textures'}, expected "
+                                 f"{sorted(want) or 'none'}")
+        elif len(me.materials) != 1:
             fails.append(f"{len(me.materials)} materials, expected 1")
         elif not any(n.type == "TEX_IMAGE" for n in me.materials[0].node_tree.nodes):
             fails.append("material carries no textures")
@@ -99,3 +128,10 @@ def verify(a, glb, clips=()):
     for f in fails:
         print(f"FAIL {f}")
     return not fails
+
+
+def gltf(glb):
+    """The JSON chunk of a .glb: what an engine reads before any buffer."""
+    with open(glb, "rb") as f:
+        head = f.read(20)
+        return json.loads(f.read(int.from_bytes(head[12:16], "little")))

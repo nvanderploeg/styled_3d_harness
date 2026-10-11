@@ -55,6 +55,7 @@ Sections, in order:
 | key | usual layer | holds | read by |
 |---|---|---|---|
 | `texture_mode` | world | `"stylized"` or `"pbr"`, for assets whose `asset.json` leaves it unset | the texture stages |
+| `materials` | world | `"baked"` or `"shared"` (the engine paints each mesh zone), for assets whose `asset.json` leaves it unset | the stages, export |
 | `limits` | any | defaults for the `asset.json` limits listed in ASSET.md | checks |
 | `palette` | zone, set | swatches by name: `{"color": "#rrggbb", "roughness", "metallic", "accent", "touches"}` | `asset.zone_table`, `asset.swatch`, checks |
 | `painted_light`, `brush`, `make_high` | world, zone | keyword arguments for the helper of that name | build scripts |
@@ -88,6 +89,8 @@ The chain merges world, then zone, then set, then the asset's own `asset.json`:
 - The `limits` in `asset.json` override the guides for that one asset, as an exception named in its `brief`.
 - A changed json rule marks the chain's built stages `spec changed`, and `verify` rebuilds and re-checks them.
   Prose marks nothing, so review the chain's assets against changed prose at their next rebuild.
+- A build that reads another chain's guide, as a decor kit sizing itself to a gameplay set does, holds it as data:
+  a changed json rule there marks that build's stages `data changed`, and prose marks nothing.
 
 ## Writing a guide
 

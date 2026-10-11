@@ -114,6 +114,14 @@ def test_helper_blocks_take_only_the_helpers_keywords():
     rejects(lambda: rules(ZONE), "painted_light takes")
 
 
+def test_materials_is_baked_or_shared():
+    write_guide(ZONE, "zone_art.md", {"materials": "engine"})
+    rejects(lambda: rules(ZONE), "materials is 'baked' or 'shared'")
+    write_guide(ZONE, "zone_art.md", {"materials": "shared"})
+    assert rules(ZONE)["materials"] == "shared"
+    assert new_asset("materials_probe", art=ZONE).shared
+
+
 def test_a_key_set_twice_in_one_guide_is_rejected():
     write_guide(ZONE, "zone_art.md", {"limits": {"max_saturation": 0.5}}, {"limits": {"max_saturation": 0.4}})
     rejects(lambda: rules(ZONE), "set in two blocks")

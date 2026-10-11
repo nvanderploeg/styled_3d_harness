@@ -27,6 +27,7 @@ VIEWS = {
 SHEETS = {
     "model": ["front", "right", "back", "left", "top", "three_quarter", "three_quarter_back", "high"],
     "texture": ["front", "right", "back", "left", "top", "three_quarter", "three_quarter_back", "unlit"],
+    "bake": ["front", "right", "back", "left", "top", "three_quarter", "three_quarter_back", "without_maps"],
 }
 
 
@@ -54,6 +55,10 @@ def run(a, stage):
     elif stage == "rig":
         tiles, frames = rig_tiles(a, scene, cam)
         print(f"review: {out}  (three-quarter view at each rig_test pose, frames {frames}; shots at rest)")
+    elif stage == "bake":
+        tiles = bake_tiles(a, scene, cam)
+        print(f"review: {out}  (tiles: {', '.join(SHEETS['bake'])}; lit, flat zone colours under the maps)")
+        maps_sheet(a, stage)
     elif stage == "animate":
         tiles, rows = animate_tiles(a, scene, cam)
         save_sheet(tiles, out)
@@ -70,12 +75,15 @@ def run(a, stage):
 
 def shot_sheet(a, stage, scene, cam):
     """review/<stage>_shots.png from asset.json `shots`: framed close-ups and gameplay cameras.
-    Texture stages render each shot lit, then unlit."""
+    Texture stages render each shot lit, then unlit; the bake stage renders it lit."""
     shots = a.spec.get("shots") or []
     if not shots:
         return
     scene.render.resolution_x = scene.render.resolution_y = SHOT
     textured = stage.startswith("texture")
+    if stage == "bake":
+        bake_materials(a)
+        eevee(scene)
     tiles = []
     for s in shots:
         place(cam, Vector(s["target"]), Vector(s.get("from", (1, -1, 0.7))), s["distance"], s.get("lens", 50))
@@ -86,7 +94,7 @@ def shot_sheet(a, stage, scene, cam):
         tiles.append(render(scene))
     out = a.path("review", f"{stage}_shots.png")
     save_sheet(tiles, out, cols=2 if textured else min(4, len(tiles)))
-    per = "lit, unlit" if textured else "one tile each"
+    per = "lit, unlit" if textured else "lit, under the maps" if stage == "bake" else "one tile each"
     print(f"review: {out}  (shots: {', '.join(s['name'] for s in shots)}; {per})")
 
 
@@ -300,13 +308,16 @@ def rig_tiles(a, scene, cam):
 
 def animate_tiles(a, scene, cam, per_clip=4):
     """Per clip, a row of per_clip frames from its first to its last, all framed alike, with the spec's
-    props in grey. Textured by the latest texture stage."""
+    props in grey. Textured by the latest texture stage, or for a shared asset by its bake."""
     import animation
     arm, obj = a.armature, a.mesh
     tex = a.latest("texture")
     if tex:
         obj.data.materials.clear()
         obj.data.materials.append(material.baked(a, tex))
+        eevee(scene)
+    elif a.shared and os.path.exists(a.blend("bake")):
+        bake_materials(a)
         eevee(scene)
     else:
         workbench(scene)
@@ -355,13 +366,39 @@ def texture_tiles(a, stage, scene, cam):
     return tiles
 
 
+def bake_materials(a, maps=True):
+    """Each zone material made its flat preview (material.preview), under the bake stage's normal and occlusion
+    maps when maps and they exist, the occlusion darkening the colour as it will in the engine."""
+    paths = {k: a.texture("bake", k) for k in ("normal", "occlusion")} if maps else {}
+    paths = {k: p for k, p in paths.items() if os.path.exists(p)}
+    for m in a.mesh.data.materials:
+        material.preview(m, a.swatch(m.name[5:]), darken=True, **paths)
+
+
+def bake_tiles(a, scene, cam):
+    """Lit views of the mesh in its zones' flat colours under the bake's maps, then the three-quarter view
+    without them, to show what the bake adds."""
+    bake_materials(a)
+    eevee(scene)
+    pts = posed_points(a.mesh)
+    tiles = []
+    for v in SHEETS["bake"][:-1]:
+        aim(cam, pts, v)
+        tiles.append(render(scene))
+    bake_materials(a, maps=False)
+    aim(cam, pts, "three_quarter")
+    tiles.append(render(scene))
+    return tiles
+
+
 def maps_sheet(a, stage):
     """review/<stage>_maps.png: the baked maps flat, as the engine reads them."""
     tiles, names = [], []
     orm = a.texture(stage, "orm")
     for name, path, channel in (("albedo", a.texture(stage, "albedo"), None), ("occlusion", orm, 0),
                                 ("roughness", orm, 1), ("metallic", orm, 2),
-                                ("normal", a.texture(stage, "normal"), None)):
+                                ("normal", a.texture(stage, "normal"), None),
+                                ("occlusion", a.texture(stage, "occlusion"), 0)):
         if not os.path.exists(path):
             continue
         img = imgio.read(path)

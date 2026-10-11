@@ -21,7 +21,7 @@ HELPERS = {"painted_light": ("nodes", "Tree.painted_light"), "brush": ("nodes", 
            "make_high": ("modeling", "make_high")}
 PER_ASSET = {"top", "normal"}
 FREE = {"scale", "shape", "kit"}
-TOP = {"texture_mode", "limits", "palette", "budgets"} | set(HELPERS) | FREE
+TOP = {"texture_mode", "materials", "limits", "palette", "budgets"} | set(HELPERS) | FREE
 
 
 def luma(rgb):
@@ -148,6 +148,8 @@ def _check_keys(rules, path, limit_names):
         raise SystemExit(f"{path}: unknown rules {sorted(unknown)}; the keys are {sorted(TOP)} (pipeline/ART.md)")
     if rules.get("texture_mode", "stylized") not in ("stylized", "pbr"):
         raise SystemExit(f"{path}: texture_mode is 'stylized' or 'pbr'")
+    if rules.get("materials", "baked") not in ("baked", "shared"):
+        raise SystemExit(f"{path}: materials is 'baked' or 'shared'")
     bad = sorted(set(rules.get("limits", {})) - set(limit_names))
     if bad:
         raise SystemExit(f"{path}: {bad} are not limits; the limits are {sorted(limit_names)}")

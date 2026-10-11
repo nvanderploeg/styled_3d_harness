@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import re
 
 import bmesh
 import bpy
@@ -10,9 +11,13 @@ from mathutils.kdtree import KDTree
 
 import animation
 import art
+import asset as asset_mod
 import modeling
 import rigging
 import uvmath
+import verify
+
+COPY = re.compile(r"^(zone_.+)\.\d{3,}$")
 
 
 class Report:
@@ -32,6 +37,7 @@ class Report:
 
 
 def run(a, stage):
+    snap = verify.digest(verify.snapshot(a))
     r = Report()
     mesh_checks(a, r, stage)
     if a.mesh is not None:
@@ -41,16 +47,23 @@ def run(a, stage):
             rig_checks(a, r)
         if stage.startswith("texture"):
             texture_checks(a, r, stage)
+        if stage == "bake":
+            bake_checks(a, r, stage)
         if stage == "animate":
             animate_checks(a, r)
 
     ok = not r.fails
     built = os.path.getmtime(a.blend(stage))
-    rep = {"stage": stage, "pass": ok, "built": built, "spec": a.fingerprint(stage),
+    rep = {"stage": stage, "pass": ok, "built": built, "spec": a.fingerprint(stage), "snapshot": snap,
            "fail": r.fails, "warn": r.warns, "metrics": r.metrics}
     prev = a.report(stage)
     if prev and prev.get("built") == built and "verified" in prev:
         rep["verified"] = prev["verified"]
+        if "inputs" in prev:
+            rep["inputs"] = prev["inputs"]
+    stored = bpy.context.scene.get(asset_mod.INPUTS)
+    if "inputs" not in rep and stored is not None:
+        rep["inputs"] = json.loads(stored)
     os.makedirs(a.path("review"), exist_ok=True)
     with open(a.path("review", f"{stage}.json"), "w") as f:
         json.dump(rep, f, indent=2)
@@ -127,6 +140,7 @@ def mesh_checks(a, r, stage):
     r.require(doubles == 0, f"{doubles} overlapping verts — weld them")
     r.require(degenerate == 0, f"{degenerate} zero-area faces")
     r.require(flipped == 0, f"{flipped} edges between faces with opposite normals")
+    corner_checks(a, r)
     if boundary and not a.limits["allow_open"]:
         r.fail(f"{boundary} open (boundary) edges — close the mesh or set limits.allow_open")
     if boundary == 0 and flipped == 0:
@@ -149,6 +163,11 @@ def mesh_checks(a, r, stage):
     slots = [s.material for s in obj.material_slots]
     r.require(slots and all(m and m.name.startswith("zone_") for m in slots),
               f"every material slot must be a zone_* material, found {[m.name if m else None for m in slots]}")
+    for m in slots:
+        copy = COPY.match(m.name) if m else None
+        if copy:
+            r.fail(f"{m.name} is Blender's duplicate of {copy[1]} and reads as a new zone; give its faces "
+                   f"{copy[1]}")
     used = {p.material_index for p in me.polygons}
     r.require(used == set(range(len(slots))), "unused or out-of-range material slots")
     r.metrics["zones"] = [m.name[5:] for m in slots if m]
@@ -158,6 +177,45 @@ def mesh_checks(a, r, stage):
         hd = high.dimensions
         r.require(all(abs(hd[i] - dims[i]) <= 0.05 * size for i in range(3)),
                   f"{high.name} bounds {list(map(lambda d: round(d, 3), hd))} do not match the low mesh")
+
+
+def corner_angles(me):
+    """(angle in degrees, polygon index) for every face corner of me whose two edges have length."""
+    n = len(me.loops)
+    lv = np.empty(n, np.int64)
+    me.loops.foreach_get("vertex_index", lv)
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    start = np.empty(len(me.polygons), np.int64)
+    me.polygons.foreach_get("loop_start", start)
+    total = np.empty(len(me.polygons), np.int64)
+    me.polygons.foreach_get("loop_total", total)
+    poly = np.repeat(np.arange(len(start)), total)
+    pos = np.arange(n) - start[poly]
+    p = co[lv]
+    u = co[lv[start[poly] + (pos - 1) % total[poly]]] - p
+    v = co[lv[start[poly] + (pos + 1) % total[poly]]] - p
+    ok = (np.linalg.norm(u, axis=1) > 0) & (np.linalg.norm(v, axis=1) > 0)
+    angle = np.degrees(np.arctan2(np.linalg.norm(np.cross(u, v), axis=1), (u * v).sum(axis=1)))
+    return angle[ok], poly[ok]
+
+
+def corner_checks(a, r):
+    """min_corner_deg and max_corner_deg over every face corner. A corner under limits.min_corner_deg is a
+    sliver; one within it of 180° is a vertex lying on a straight side."""
+    angle, poly = corner_angles(a.mesh.data)
+    if not angle.size:
+        return
+    r.metrics.update(min_corner_deg=round(float(angle.min()), 3), max_corner_deg=round(float(angle.max()), 3))
+    lim = a.limits["min_corner_deg"]
+    if not lim:
+        return
+    thin, flat = len(set(poly[angle < lim])), len(set(poly[angle > 180 - lim]))
+    r.require(not thin, f"{thin} slivers, faces with a corner under {lim}° (limits.min_corner_deg) — merge each "
+                        "into a neighbour or re-cut the fill")
+    r.require(not flat, f"{flat} faces with a corner over {180 - lim}°, a vertex on a straight side "
+                        "(limits.min_corner_deg) — dissolve it or move it off the line")
 
 
 def uv_checks(a, r):
@@ -271,19 +329,7 @@ def texture_checks(a, r, stage):
     me = a.mesh.data
     tri_uv, _ = uvmath.triangles(me)
     mask = uvmath.raster(tri_uv, size) > 0
-    maps = {}
-    for name in REQUIRED_MAPS[stage] + (["normal"] if a.high and stage == "texture_base" else []):
-        p = a.texture(stage, name)
-        if not r.require(os.path.exists(p), f"missing map {os.path.relpath(p, a.dir)}"):
-            continue
-        img = bpy.data.images.load(p, check_existing=False)
-        w, h = img.size
-        if not r.require((w, h) == (size, size), f"{name} is {w}x{h}, expected {size}x{size}"):
-            continue
-        px = np.empty(w * h * 4, np.float32)
-        img.pixels.foreach_get(px)
-        maps[name] = px.reshape(h, w, 4)[..., :3]
-        bpy.data.images.remove(img)
+    maps = load_maps(a, r, stage, REQUIRED_MAPS[stage] + (["normal"] if a.high and stage == "texture_base" else []))
 
     if "albedo" in maps:
         zone_checks(a, r, stage, maps["albedo"], tri_uv, size)
@@ -297,11 +343,7 @@ def texture_checks(a, r, stage):
             if dark > 0.02 or bright > 0.02:
                 r.warn("albedo leaves the physically plausible 30–243 sRGB range — lighting may be baked in")
     if "normal" in maps:
-        n = maps["normal"][mask]
-        mean = n.mean(axis=0)
-        r.metrics["normal_mean"] = [round(float(x), 3) for x in mean]
-        r.require(mean[2] > 0.7 and abs(mean[0] - 0.5) < 0.1 and abs(mean[1] - 0.5) < 0.1,
-                  "normal map is not a tangent-space map centred on (0.5, 0.5, 1)")
+        normal_check(r, maps["normal"][mask])
     if "orm" in maps:
         orm = maps["orm"][mask]
         r.metrics["orm_mean"] = [round(float(x), 3) for x in orm.mean(axis=0)]
@@ -312,6 +354,53 @@ def texture_checks(a, r, stage):
     for m in a.mesh.data.materials:
         principled = [n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED"] if m.use_nodes else []
         r.require(len(principled) == 1, f"{m.name} must end in exactly one Principled BSDF")
+
+
+def load_maps(a, r, stage, names):
+    """{name: (h, w, 3) array} of the stage's maps that exist at texture_size; FAILs name the rest."""
+    size, maps = a.spec["texture_size"], {}
+    for name in names:
+        p = a.texture(stage, name)
+        if not r.require(os.path.exists(p), f"missing map {os.path.relpath(p, a.dir)}"):
+            continue
+        img = bpy.data.images.load(p, check_existing=False)
+        w, h = img.size
+        if not r.require((w, h) == (size, size), f"{name} is {w}x{h}, expected {size}x{size}"):
+            continue
+        px = np.empty(w * h * 4, np.float32)
+        img.pixels.foreach_get(px)
+        maps[name] = px.reshape(h, w, 4)[..., :3]
+        bpy.data.images.remove(img)
+    return maps
+
+
+def normal_check(r, texels):
+    """normal_mean over the UV-covered texels; a tangent-space map averages near flat (0.5, 0.5, 1)."""
+    mean = texels.mean(axis=0)
+    r.metrics["normal_mean"] = [round(float(x), 3) for x in mean]
+    r.require(mean[2] > 0.7 and abs(mean[0] - 0.5) < 0.1 and abs(mean[1] - 0.5) < 0.1,
+              "normal map is not a tangent-space map centred on (0.5, 0.5, 1)")
+
+
+def bake_checks(a, r, stage):
+    """The bake stage's normal and occlusion maps exist at texture_size; the normal map is tangent space and
+    the occlusion is not black. Occlusion white everywhere warns: it is right only where nothing shelters
+    the mesh within ao_distance."""
+    me = a.mesh.data
+    if not r.require(len(me.uv_layers) == 1, f"need exactly one UV map to bake onto, found {len(me.uv_layers)}"):
+        return
+    tri_uv, _ = uvmath.triangles(me)
+    mask = uvmath.raster(tri_uv, a.spec["texture_size"]) > 0
+    maps = load_maps(a, r, stage, ["normal", "occlusion"])
+    if "normal" in maps:
+        normal_check(r, maps["normal"][mask])
+    if "occlusion" in maps:
+        ao = maps["occlusion"][mask][:, 0]
+        r.metrics.update(occlusion_mean=round(float(ao.mean()), 3), occlusion_min=round(float(ao.min()), 3))
+        r.require(ao.mean() > 0.2, "occlusion is near black — the bake missed, or something covers the mesh")
+        if ao.min() > 0.99:
+            r.warn("occlusion is white everywhere — nothing shelters the mesh within ao_distance; check the "
+                   "distance if the shape has hollows")
 
 
 def zone_checks(a, r, stage, albedo, tri_uv, size):

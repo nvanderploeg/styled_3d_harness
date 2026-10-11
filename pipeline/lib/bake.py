@@ -7,6 +7,7 @@ import imgio
 
 CHANNELS = {"albedo": ("Base Color", "sRGB"), "roughness": ("Roughness", "Non-Color"),
             "metallic": ("Metallic", "Non-Color")}
+FLAT = (0.5, 0.5, 1.0)
 
 
 def triangulate(obj):
@@ -93,6 +94,46 @@ def bake(a, stage, normal=None, ao_in_orm=True, samples=32, ao_samples=128, ao_d
     if "normal" in maps:
         imgio.write(maps["normal"], a.texture(stage, "normal"))
     print(f"bake: wrote {', '.join(['albedo', 'orm'] + (['normal'] if 'normal' in maps else []))} to {out}")
+
+
+def detail(a, stage="bake", ao_distance=0.25, samples=32, ao_samples=128):
+    """Bake the detail a shared-material asset carries over the engine's zone materials, onto the low mesh's
+    UVs at texture_size, into textures/<stage>/: <slug>_normal.png, tangent space from <slug>_high (flat
+    without one), and <slug>_occlusion.png, the ambient occlusion of the high (else the low) as grey.
+
+    ao_distance: AO ray length in metres. It is absolute so that pieces of a set darken their creases alike."""
+    scene = bpy.context.scene
+    scene.render.engine = "CYCLES"
+    print(f"bake: device {use_gpu(scene)}")
+    obj, high, size = a.mesh, a.high, a.spec["texture_size"]
+    mats = list(obj.data.materials)
+    for m in mats:
+        m.use_nodes = True
+    arm = a.armature
+    if arm:
+        rest, arm.data.pose_position = arm.data.pose_position, "REST"
+    tri = triangulate(obj)
+    settings = scene.render.bake
+    settings.margin = max(4, size // 64)
+    settings.margin_type = "EXTEND"
+    extrusion = 0.02 * a.size() if high else 0.0
+    try:
+        if high:
+            normal = _bake(scene, obj, mats, "NORMAL", size, "Non-Color", samples, high=high, extrusion=extrusion)
+        else:
+            normal = np.broadcast_to(np.array(FLAT, np.float32), (size, size, 3))
+        scene.world = scene.world or bpy.data.worlds.new("bake")
+        scene.world.light_settings.distance = ao_distance
+        ao = _bake(scene, obj, mats, "AO", size, "Non-Color", ao_samples, high=high, extrusion=extrusion)
+    finally:
+        obj.modifiers.remove(tri)
+        if arm:
+            arm.data.pose_position = rest
+
+    os.makedirs(a.textures(stage), exist_ok=True)
+    imgio.write(normal, a.texture(stage, "normal"))
+    imgio.write(np.repeat(ao[..., :1], 3, axis=-1), a.texture(stage, "occlusion"))
+    print(f"bake: wrote normal{' (flat: no high mesh)' if not high else ''}, occlusion to {a.textures(stage)}")
 
 
 def _emit(mat, socket):
