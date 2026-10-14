@@ -27,6 +27,8 @@ Take the stages in the order `pipeline/asset status <slug>` lists them, skipping
 
    > Use the `<skill>` skill (invoke it with the Skill tool) on asset `<slug>` in `<repo path>`. Work until its completion criterion holds. Keep scratch files under `<scratchpad>/<slug>-<stage>/`, and name scripts `<slug>_<purpose>.py` so none shadows a Python module. Change `asset.json` only where the skill says to. Report: the final check output, the review sheet paths, every judgement call you made, each change to `asset.json`, and anything you could not match.
 
+   Dispatch stage agents on Sonnet, and run export, `verify` and other fixed commands on Haiku. Keep the gate yourself.
+
    A fresh agent per stage keeps each stage's attention on its own criterion, and keeps renders out of your context. Without an Agent tool, invoke the stage's skill yourself and keep the same gate.
 
 2. **Gate.** Run `pipeline/asset status <slug>`; the stage must read `pass`. Then read its review sheet and its shots sheet yourself, and judge them against the brief, the refs and the art guides with fresh eyes. Judge the sheets, not the agent's report of them. Look hardest for the failure looks the guides name, such as a natural piece that reads as built: every check can pass on them.

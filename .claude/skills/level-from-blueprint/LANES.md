@@ -2,6 +2,20 @@
 
 A lane is one agent, the files it owns, and a checkpoint where you read its sheets.
 
+## Models
+
+Pick each agent's model by the work, and set it on the dispatch. An agent left unset inherits yours.
+
+| model | work | examples |
+|---|---|---|
+| Haiku | Running tools whose output is fixed by their inputs, and checking the result against a rule | the block-out extract, shape fit, routes map and audit; the placement table; batch reruns; `verify`; export and packing |
+| Sonnet | Analysis and construction | a catalogue and plan from the extract; guides; a kit generator and its contract; modelling, materials and bakes; fixes after a send-back |
+| Opus (you) | Planning and judgement | questions for the requester; reversible calls; lane order and briefs; reading every sheet at the gate |
+
+- **Haiku's brief names the command and its pass condition.** Write the command line, what a pass looks like and where to write the output. Haiku reports the output and stops. It doesn't redesign a tool that fails: the failure comes back to you.
+- **A send-back resumes the same agent, whatever its tier.** A fresh agent reads the kit again before it can fix anything.
+- **Move a task up a tier when it fails twice.** Record the move in the plan's decisions, so the next level starts from the right model.
+
 ## Brief
 
 Every brief carries this, filled in:

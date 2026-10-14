@@ -20,6 +20,7 @@ Put these in every brief you write; agents default to deferring.
 - **Lanes own files.** Each lane is the only writer of its files. Others import and wrap them, never edit them. Each lane keeps its scratch in one folder of its own, so a cancelled lane leaves one path to delete.
 - **Gate the sheets, not the reports.** Numbers can't see that a wall reads as masonry. Read every sheet yourself, and hold the views the player sees first and last, the start and the finish, hardest.
 - **Every batch reruns safely.** A usage limit can stop every lane at once. Approved modules skip and `verify` catches drift, so a lane cut off mid-step resumes with "check disk state first, then continue".
+- **Match the model to the work** ([LANES.md](LANES.md), *Models*). Set `model` on every agent you dispatch: Haiku runs deterministic tools, Sonnet analyses and builds, and planning and gating stay with you.
 - **References stay internal** unless the package says otherwise. They never enter a zip, a published page or a public repo.
 
 ## 1. Discover
@@ -48,6 +49,8 @@ Done when `pipeline/asset art <chain>` accepts each chain and the palette sheet 
 ## 4. Test article
 
 Take the test piece through `make-asset` as the lead of the gameplay set, modular from the start ([MODULES.md](MODULES.md)): a cap class and its body segments, made by a kit generator whose contract runs in code. Have its agent dry-run the generator over the rest of the family. Start step 5 at the same time.
+
+The look is settled here, in guide numbers more than generator code. When two send-backs leave the same built cue, find the guide value that forces it and bring that to the requester. On one level, drums read as pillows because the minimum joint depth at the chamfer angle forced 0.7 m chamfers. A cap's breaks stayed shallow because `edge_variance_m` held the top outline to 0.15 m. Settling these on the test article costs a few rounds, once for the whole set; settling them after the batch costs a rebuild.
 
 This is the checkpoint you always bring to the requester. Done when they approve the sheets and every value the approval settled is in the guides or the kit.
 

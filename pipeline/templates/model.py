@@ -21,5 +21,6 @@ m.zone(body, "main")
 m.finalize(asset, [body])  # joins parts, welds, origin to bottom centre, smooth-by-angle
 # m.reduce(asset)          # high first: build the parts in detail, m.keep() the faces gameplay measures, and
 #                          # reduce to tri_budget; the detailed mesh stays as <slug>_high for the bake
+#                          # bevel a copy of the low as <slug>_high after reducing, never before
 m.unwrap(asset)            # seams on hard edges plus any marked, even texel density, packed
 # m.make_high(asset, **asset.art.get("make_high", {}))  # rounded-edge twin for normal/AO bakes

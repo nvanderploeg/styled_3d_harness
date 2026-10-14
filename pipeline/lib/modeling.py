@@ -75,7 +75,9 @@ def reduce(asset, tris=None, planar_deg=1.0, borders=True, sharp_angle=35):
     vertices whose loss costs the shape least, a large face weighing more than small ones. Every vertex of the
     reduced mesh is a vertex of the detailed one. Kept faces (`keep`) keep their vertices and edges bit-exact.
     With borders, every zone border keeps its vertices too, and an open mesh always keeps its rim. The reduced
-    mesh carries the zones and no UVs: unwrap it. It may come out triangle-dominant."""
+    mesh carries the zones and no UVs: unwrap it. It may come out triangle-dominant.
+
+    Reduce before bevelling: a bevelled corner has no vertex on its planes, and the low folds."""
     target = tris or asset.spec["tri_budget"]
     high, low = asset.high, asset.mesh
     if high is None:

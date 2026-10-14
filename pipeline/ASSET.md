@@ -194,6 +194,8 @@ budget: the detailed mesh stays as `<slug>_high`, and `<slug>` is its reduction.
 bit-exact, and with `borders` so do zone borders, so build both no denser than the low can afford. Then
 `unwrap` the low, and bake: a shared asset's `bake` stage (`bake.detail`), a baked asset's texture stages. The
 reduced mesh may be triangle-dominant; allow it with `limits.max_tri_ratio` on the budget classes built this way.
+Bevels and cracks go on after `reduce`, on a copy of the low that replaces `<slug>_high`: a bevelled corner has no
+vertex on its planes, so a low reduced from a bevelled mesh folds.
 
 ## Review sheets
 
